@@ -68,7 +68,7 @@ export class TooltipElement {
       "border-radius": "4px",
       padding: "5px 10px",
       "font-family":
-        "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif",
+        "sans-serif",
       "font-size": "12px",
       "font-weight": "400",
       "box-shadow": "0px 2px 4px rgba(0, 0, 0, 0.2)",

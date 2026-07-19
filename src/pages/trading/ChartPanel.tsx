@@ -4,6 +4,10 @@ import {
   ColorType,
   CrosshairMode,
   createChart,
+  createSeriesMarkers,
+  createTextWatermark,
+  CandlestickSeries,
+  HistogramSeries,
   type HistogramData,
   type IChartApi,
   type IPriceLine,
@@ -14,7 +18,7 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
-import { Clock, ListTree } from "lucide-react";
+import { Clock } from "lucide-react";
 import {
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
@@ -37,7 +41,7 @@ import { CrosshairHighlightPrimitive } from "../../lib/chart-plugins/highlight-b
 import { SessionBreaks } from "../../lib/chart-plugins/session-breaks/session-breaks.ts";
 import { SessionHighlighting } from "../../lib/chart-plugins/session-highlighting/session-highlighting.ts";
 import { TooltipPrimitive } from "../../lib/chart-plugins/tooltip/tooltip.ts";
-import type { IndicatorType } from "../../lib/indicators.ts";
+import type { IndicatorType, IndicatorParams, IndicatorAppearance } from "../../lib/indicators.ts";
 import { cn } from "../../lib/utils.ts";
 import { api } from "../../services/api.ts";
 import { queryKeys } from "../../services/queries.ts";
@@ -61,11 +65,13 @@ import {
 } from "./DrawingToolsOverlay.tsx";
 import { DrawingToolRail } from "./DrawingToolRail.tsx";
 import { DRAWING_STYLES_EVENT, getStyleDefaults } from "./drawingStyles.ts";
-import { NewsOverlay } from "./NewsOverlay.tsx";
 import { ObjectTreePanel } from "./ObjectTreePanel.tsx";
 import { useChallengeLevels } from "./useChallengeLevels.ts";
 import { useIndicators } from "./useIndicators.ts";
-import { useNewsOverlay } from "./useNewsOverlay.ts";
+import { useIndicatorPaneZoom } from "./useIndicatorPaneZoom.ts";
+import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
+import { IndicatorChips } from "./IndicatorChips.tsx";
+// import { useNewsOverlay } from "./useNewsOverlay.ts";
 import { useSlTpDrag } from "./useSlTpDrag.ts";
 import {
   formatCountdown,
@@ -199,6 +205,10 @@ export interface ChartPanelProps {
   timeframe: Timeframe;
   isDark: boolean;
   activeIndicators: IndicatorType[];
+  hiddenIndicators?: IndicatorType[];
+  onToggleIndicatorVisibility?: (type: IndicatorType) => void;
+  indicatorParams: Partial<Record<IndicatorType, IndicatorParams>>;
+  indicatorAppearance: Partial<Record<IndicatorType, IndicatorAppearance>>;
   drawingTool: DrawingTool;
   drawings: DrawingLine[];
   onAddDrawing: (d: DrawingLine) => void;
@@ -254,6 +264,11 @@ export interface ChartPanelProps {
   onClearDrawings?: () => void;
   /** Context-menu "Remove N indicators". */
   onClearIndicators?: () => void;
+  onOpenIndicatorSettings?: (type: IndicatorType) => void;
+  onOpenIndicatorAppearance?: (type: IndicatorType) => void;
+  onCycleMagnet?: () => void;
+  onToggleStayInDrawingMode?: () => void;
+  onToggleIndicator?: (type: IndicatorType) => void;
   /**
    * Session replay is active — candles are a historical slice, so the
    * staleness watchdog must not treat the old last-bar as a data gap.
@@ -517,6 +532,7 @@ function applyBidAskLines(
   tick: TickData | undefined,
   prefs: { showBidLine: boolean; showAskLine: boolean },
   ctx: RtCtx,
+  prevMidPrice: number | null,
 ): void {
   const series = ctx.series;
   if (!tick) {
@@ -525,6 +541,8 @@ function applyBidAskLines(
     removePriceLineSafe(ctx.midLine, series);
     return;
   }
+  // Only show the individual bid/ask lines when the user has explicitly enabled them.
+  // The mid line is always shown and is direction-aware (green up, red down).
   upsertPriceLine(ctx.bidLine, series, prefs.showBidLine, {
     price: tick.bid,
     color: ctx.colors.bidLine,
@@ -545,15 +563,20 @@ function applyBidAskLines(
     axisLabelColor: ctx.colors.askLabelBg,
     axisLabelTextColor: "#ffffff",
   });
-  // Mid line only when both bid+ask are hidden — otherwise it overlaps them.
-  upsertPriceLine(ctx.midLine, series, !prefs.showBidLine && !prefs.showAskLine, {
-    price: (tick.bid + tick.ask) / 2,
-    color: "#7aa2ff99",
+  // Mid line: only show when bid/ask are both disabled (avoids visual clutter).
+  const showMid = !prefs.showBidLine && !prefs.showAskLine;
+  const mid = (tick.bid + tick.ask) / 2;
+  const goingUp = prevMidPrice == null || mid >= prevMidPrice;
+  const midColor = goingUp ? "#0ecb81" : "#f6465d";
+  const midLabelBg = goingUp ? "#0ecb81" : "#f6465d";
+  upsertPriceLine(ctx.midLine, series, showMid, {
+    price: mid,
+    color: midColor,
     lineWidth: 1,
     lineStyle: LineStyle.Dashed,
     axisLabelVisible: true,
     title: "",
-    axisLabelColor: "#3b5ab5",
+    axisLabelColor: midLabelBg,
     axisLabelTextColor: "#ffffff",
   });
 }
@@ -912,7 +935,7 @@ function OhlcvLegendRow({ legend, pipDigits }: { legend: OhlcvLegend; pipDigits:
 function BidAskRow({ tick, pipDigits }: { tick: TickData; pipDigits: number }) {
   const spread = ((tick.ask - tick.bid) * 10 ** pipDigits).toFixed(1);
   return (
-    <div className="flex items-center gap-2 text-[10px] font-mono">
+    <div className="flex items-center gap-2 text-[10px] ">
       <span className="text-muted-foreground/50">Bid</span>
       <span className="text-[#0ecb81]/80">{tick.bid.toFixed(pipDigits)}</span>
       <span className="text-muted-foreground/50">Ask</span>
@@ -945,8 +968,8 @@ function ChartLegendHeader({
   showCountdown: boolean;
 }) {
   return (
-    <div className="absolute top-2 left-3 z-10 pointer-events-none select-none">
-      <div className="flex items-center gap-2 text-[11px] font-mono leading-none mb-1">
+    <div className="absolute top-2 z-10 pointer-events-none select-none" style={{ left: "calc(0.75rem + var(--rail-w, 0px))" }}>
+      <div className="flex items-center gap-2 text-[11px] leading-none mb-1">
         <span className="text-foreground font-bold text-[13px] tracking-tight">
           {selectedSymbol}
         </span>
@@ -1035,33 +1058,19 @@ function ObjectTreeOverlay({
   onReorder: (d: DrawingLine, dir: "front" | "back") => void;
 }) {
   if (drawings.length === 0) return null;
+  if (!open) return null;
   return (
-    <>
-      <button
-        type="button"
-        title="Object tree (drawings)"
-        onClick={onToggle}
-        className={cn(
-          "absolute bottom-2 left-2 z-10 p-1.5 rounded-md border border-border bg-card/90 shadow",
-          open ? "text-primary" : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <ListTree className="h-3.5 w-3.5" />
-      </button>
-      {open && (
-        <ObjectTreePanel
-          drawings={drawings}
-          selectedIds={selectedIds}
-          pipDigits={pipDigits}
-          currentTf={currentTf}
-          onSelect={onSelect}
-          onUpdate={onUpdate}
-          onRemove={onRemove}
-          onReorder={onReorder}
-          onClose={onToggle}
-        />
-      )}
-    </>
+    <ObjectTreePanel
+      drawings={drawings}
+      selectedIds={selectedIds}
+      pipDigits={pipDigits}
+      currentTf={currentTf}
+      onSelect={onSelect}
+      onUpdate={onUpdate}
+      onRemove={onRemove}
+      onReorder={onReorder}
+      onClose={onToggle}
+    />
   );
 }
 
@@ -1075,6 +1084,10 @@ export function ChartPanel({
   timeframe,
   isDark,
   activeIndicators,
+  hiddenIndicators = [],
+  onToggleIndicatorVisibility,
+  indicatorParams,
+  indicatorAppearance,
   drawingTool,
   drawings,
   onAddDrawing,
@@ -1101,6 +1114,11 @@ export function ChartPanel({
   onQuickOrder,
   onClearDrawings,
   onClearIndicators,
+  onOpenIndicatorSettings,
+  onOpenIndicatorAppearance,
+  onCycleMagnet,
+  onToggleStayInDrawingMode,
+  onToggleIndicator,
   isReplaying = false,
 }: ChartPanelProps) {
   const queryClient = useQueryClient();
@@ -1129,6 +1147,7 @@ export function ChartPanel({
   const bidLineRef = useRef<IPriceLine | null>(null);
   const askLineRef = useRef<IPriceLine | null>(null);
   const midLineRef = useRef<IPriceLine | null>(null);
+  const prevMidPriceRef = useRef<number | null>(null);
 
   // ── SL/TP drag-to-edit state ──
   const slTpLinesRef = useRef<SlTpMap>(new Map());
@@ -1292,14 +1311,8 @@ export function ChartPanel({
   );
   const { chartData, volumeData } = useChartData(allCandles, colors);
 
-  const {
-    newsConfig,
-    setNewsConfig,
-    showNewsConfigDialog,
-    setShowNewsConfigDialog,
-    newsPopup,
-    setNewsPopup,
-  } = useNewsOverlay(containerRef, chartRef, selectedSymbol, isDark, chartData);
+  // News overlay disabled - not needed for now
+  // const { ... } = useNewsOverlay(containerRef, chartRef, selectedSymbol, isDark, chartData);
 
   const dragPrice = useSlTpDrag(
     containerRef,
@@ -1389,26 +1402,30 @@ export function ChartPanel({
     [onAddDrawing, pipDigits, timeframe, selectedSymbol],
   );
 
-  useIndicators(chartRef, candleSeriesRef, chartData, activeIndicators, isDark);
+  const { paneMeta } = useIndicators(chartRef, candleSeriesRef, chartData, activeIndicators, isDark, indicatorParams, indicatorAppearance, hiddenIndicators);
+
+  // ── Indicator pane price scale drag-to-zoom ──
+  // lightweight-charts v5 doesn't support drag-to-zoom on custom overlay price
+  // scales natively. This hook adds a custom handler so dragging on the right
+  // edge of an indicator pane (RSI, ATR, MACD, Stoch) zooms the pane content.
+  useIndicatorPaneZoom(containerRef, chartRef, paneMeta, chartEpoch);
 
   // ── Replay trade event markers ─────────────────────────────
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
-    if (!replayTradeEvents || replayTradeEvents.length === 0) {
-      series.setMarkers([]);
-      return;
-    }
     const markers: SeriesMarker<Time>[] = [];
-    for (const ev of replayTradeEvents) {
-      const marker = buildReplayMarker(ev, timeframe);
-      if (marker) markers.push(marker);
+    if (replayTradeEvents && replayTradeEvents.length > 0) {
+      for (const ev of replayTradeEvents) {
+        const marker = buildReplayMarker(ev, timeframe);
+        if (marker) markers.push(marker);
+      }
+      // lightweight-charts requires markers sorted by time ascending
+      markers.sort((a, b) => (a.time as number) - (b.time as number));
     }
-    // lightweight-charts requires markers sorted by time ascending
-    markers.sort((a, b) => (a.time as number) - (b.time as number));
-    series.setMarkers(markers);
+    const plugin = createSeriesMarkers(series, markers);
     return () => {
-      series.setMarkers([]);
+      plugin.detach();
     };
   }, [replayTradeEvents, timeframe]);
 
@@ -1441,8 +1458,16 @@ export function ChartPanel({
       layout: {
         background: { type: ColorType.Solid, color: colors.background },
         textColor: colors.text,
-        fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace",
+        fontFamily: "sans-serif",
         fontSize: 11,
+        attributionLogo: false,
+        panes: {
+          enableResize: true,
+          separatorColor: isDark ? "#2A2E39" : "#D1D4DC",
+          separatorHoverColor: isDark
+            ? "rgba(180, 200, 240, 0.15)"
+            : "rgba(100, 120, 160, 0.15)",
+        },
       },
       grid: {
         vertLines: { color: colors.grid, style: LineStyle.Dotted },
@@ -1485,14 +1510,6 @@ export function ChartPanel({
         fixRightEdge: false,
         borderVisible: true,
       },
-      watermark: {
-        visible: true,
-        text: selectedSymbol,
-        fontSize: 56,
-        color: colors.watermark,
-        horzAlign: "center",
-        vertAlign: "center",
-      },
       handleScroll: {
         mouseWheel: true,
         pressedMouseMove: true,
@@ -1509,7 +1526,22 @@ export function ChartPanel({
 
     chartRef.current = chart;
 
-    const candleSeries = chart.addCandlestickSeries({
+    // Add watermark to the main pane (pane 0)
+    const mainPane = chart.panes()[0];
+    if (mainPane) {
+      createTextWatermark(mainPane, {
+        visible: true,
+        lines: [{
+          text: selectedSymbol,
+          fontSize: 56,
+          color: colors.watermark,
+        }],
+        horzAlign: "center",
+        vertAlign: "center",
+      });
+    }
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: colors.up,
       downColor: colors.down,
       borderUpColor: colors.up,
@@ -1536,7 +1568,7 @@ export function ChartPanel({
     candleSeriesRef.current = candleSeries;
 
     // Volume histogram at the bottom of the chart
-    const volumeSeries = chart.addHistogramSeries({
+    const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
     });
@@ -1674,17 +1706,11 @@ export function ChartPanel({
   // TF-change effect below updates the live state in place, TradingView-style).
 
   // Update watermark text when symbol changes (visibility comes from settings)
+  // In v5, watermark is a pane primitive, not a chart option. We recreate it on symbol change.
+  // The watermark is created in the chart creation effect above using selectedSymbol.
+  // No-op here since the chart is recreated on symbol change anyway.
   useEffect(() => {
-    chartRef.current?.applyOptions({
-      watermark: {
-        visible: chartPrefs.showWatermark,
-        text: selectedSymbol,
-        fontSize: 56,
-        color: colors.watermark,
-        horzAlign: "center",
-        vertAlign: "center",
-      },
-    });
+    // Chart recreation handles watermark update in v5
   }, [selectedSymbol, colors.watermark, chartPrefs.showWatermark, chartEpoch]);
 
   // ── Live appearance settings (no chart recreation) ──
@@ -1904,7 +1930,11 @@ export function ChartPanel({
       tick,
       { showBidLine: chartPrefs.showBidLine, showAskLine: chartPrefs.showAskLine },
       makeRtCtx(series),
+      prevMidPriceRef.current,
     );
+    if (tick) {
+      prevMidPriceRef.current = (tick.bid + tick.ask) / 2;
+    }
   }, [tick, chartPrefs.showBidLine, chartPrefs.showAskLine, makeRtCtx]);
 
   // ── Position/order overlays ────────────────────────────────
@@ -1939,7 +1969,7 @@ export function ChartPanel({
   ]);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full" style={{ "--rail-w": typeof window !== "undefined" && localStorage.getItem("drawingRailDocked") === "true" ? "44px" : "0px" } as React.CSSProperties}>
       {/* OHLCV Legend Overlay */}
       <ChartLegendHeader
         selectedSymbol={selectedSymbol}
@@ -1952,6 +1982,26 @@ export function ChartPanel({
         showCountdown={chartPrefs.showCountdown}
       />
 
+      {/* Indicator pane nametags (top-left of each below pane) */}
+      <IndicatorPaneNametags
+        chartRef={chartRef}
+        paneMeta={paneMeta}
+        isDark={isDark}
+        onSettings={onOpenIndicatorSettings}
+        onToggleVisibility={onToggleIndicatorVisibility}
+        onAppearance={onOpenIndicatorAppearance}
+      />
+
+      {/* Indicator chips (below ticker data, top-left) */}
+      <IndicatorChips
+        activeIndicators={activeIndicators}
+        hiddenIndicators={hiddenIndicators}
+        isDark={isDark}
+        onRemove={(type) => onToggleIndicator?.(type)}
+        onToggleVisibility={onToggleIndicatorVisibility}
+        onSettings={(type) => onOpenIndicatorSettings?.(type)}
+      />
+
       {/* Drag-to-edit tooltip */}
       {dragPrice && (
         <div
@@ -1960,7 +2010,7 @@ export function ChartPanel({
         >
           <div
             className={cn(
-              "px-2 py-1 rounded text-[11px] font-mono font-bold shadow-lg border",
+              "px-2 py-1 rounded text-[11px] font-bold shadow-lg border",
               dragPrice.field === "TP"
                 ? "bg-[#0ecb81]/20 text-[#0ecb81] border-[#0ecb81]/40"
                 : "bg-[#f6465d]/20 text-[#f6465d] border-[#f6465d]/40",
@@ -2021,19 +2071,6 @@ export function ChartPanel({
         onReorder={handleReorderDrawing}
       />
 
-      {/* News overlay (popup, config dialog, button) */}
-      <NewsOverlay
-        newsConfig={newsConfig}
-        setNewsConfig={setNewsConfig}
-        showNewsConfigDialog={showNewsConfigDialog}
-        setShowNewsConfigDialog={setShowNewsConfigDialog}
-        newsPopup={newsPopup}
-        setNewsPopup={setNewsPopup}
-        isDark={isDark}
-        pipDigits={pipDigits}
-        containerRef={containerRef}
-      />
-
       {/* Chart-wide right-click menu (TradingView-style) */}
       {chartMenu && (
         <ChartContextMenu
@@ -2050,7 +2087,7 @@ export function ChartPanel({
           onCopyPrice={handleCopyPrice}
           onAddAlert={handleAddAlert}
           onQuickOrder={onQuickOrder}
-          onOpenObjectTree={() => setShowObjectTree(true)}
+          onOpenObjectTree={() => setShowObjectTree((v) => !v)}
           onRemoveAllDrawings={onClearDrawings}
           onClearIndicators={onClearIndicators}
           onOpenSettings={() => setShowChartSettings(true)}
@@ -2064,15 +2101,31 @@ export function ChartPanel({
         isDark={isDark}
         activePlugins={activePlugins}
         onTogglePlugin={onTogglePlugin}
-        onOpenNewsConfig={() => setShowNewsConfigDialog(true)}
+        onOpenNewsConfig={() => {}}
         hasAccount={!!accountId}
       />
 
       {/* Chart container — cursor is managed imperatively by DrawingToolsManager */}
-      <div ref={containerRef} className="w-full h-full" onContextMenu={handleChartContextMenu} />
+      {/* When rail is docked, left padding pushes chart right so nothing gets cut off */}
+      <div
+        ref={containerRef}
+        className="w-full h-full transition-[padding]"
+        style={{ paddingLeft: typeof window !== "undefined" && localStorage.getItem("drawingRailDocked") === "true" ? "44px" : "0" }}
+        onContextMenu={handleChartContextMenu}
+      />
 
       {/* Left vertical tool rail (TradingView-style grouped flyouts) */}
-      <DrawingToolRail drawingTool={drawingTool} onDrawingTool={(t) => onDrawingToolSelect?.(t)} />
+      <DrawingToolRail
+        drawingTool={drawingTool}
+        onDrawingTool={(t) => onDrawingToolSelect?.(t)}
+        drawings={drawings}
+        onClearDrawings={onClearDrawings}
+        magnetMode={magnetMode}
+        onCycleMagnet={onCycleMagnet}
+        stayInDrawingMode={stayInDrawingMode}
+        onToggleStayInDrawingMode={onToggleStayInDrawingMode}
+        onOpenObjectTree={() => setShowObjectTree((v) => !v)}
+      />
     </div>
   );
 }

@@ -271,6 +271,66 @@ export interface IndicatorConfig {
   color: string;
 }
 
+// Per-indicator parameter values (key = param name, value = number)
+// Per-indicator appearance settings
+export interface IndicatorAppearance {
+  color: string;
+  lineWidth: number;
+  lineStyle?: "solid" | "dashed" | "dotted";
+  visible: boolean;
+}
+
+export type IndicatorParams = Record<string, number>;
+
+// Get the default params for an indicator type as a flat object
+export function getDefaultParams(type: IndicatorType): IndicatorParams {
+  const cfg = INDICATOR_REGISTRY.find((r) => r.type === type);
+  return { ...(cfg?.defaultParams ?? {}) };
+}
+
+// Get the param descriptors for an indicator type (for rendering settings UI)
+export interface ParamDescriptor {
+  key: string;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}
+
+export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
+  const descriptors: Record<IndicatorType, ParamDescriptor[]> = {
+    SMA: [{ key: "period", label: "Period", min: 1, max: 200, step: 1 }],
+    EMA: [{ key: "period", label: "Period", min: 1, max: 200, step: 1 }],
+    RSI: [{ key: "period", label: "Period", min: 2, max: 50, step: 1 }],
+    MACD: [
+      { key: "fast", label: "Fast EMA", min: 2, max: 50, step: 1 },
+      { key: "slow", label: "Slow EMA", min: 2, max: 100, step: 1 },
+      { key: "signal", label: "Signal EMA", min: 1, max: 50, step: 1 },
+    ],
+    BOLL: [
+      { key: "period", label: "Period", min: 5, max: 100, step: 1 },
+      { key: "stdDev", label: "Std Dev", min: 0.5, max: 5, step: 0.1 },
+    ],
+    ATR: [{ key: "period", label: "Period", min: 1, max: 100, step: 1 }],
+    STOCH: [
+      { key: "kPeriod", label: "%K Period", min: 1, max: 50, step: 1 },
+      { key: "dPeriod", label: "%D Period", min: 1, max: 20, step: 1 },
+    ],
+    VWAP: [],
+  };
+  return descriptors[type] ?? [];
+}
+
+export function getDefaultAppearance(type: IndicatorType): IndicatorAppearance {
+  const cfg = INDICATOR_REGISTRY.find((r) => r.type === type);
+  return {
+    color: cfg?.color ?? "#888",
+    lineWidth: 1,
+    lineStyle: "solid",
+    visible: true,
+  };
+}
+
 export const INDICATOR_REGISTRY: IndicatorConfig[] = [
   {
     type: "SMA",

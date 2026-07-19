@@ -175,7 +175,7 @@ export function WatchlistPanel({
               </button>
               {t ? (
                 <div className="flex items-center gap-1">
-                  <div className="text-right font-mono">
+                  <div className="text-right ">
                     <div className="text-buy">{formatNumber(t.bid, 5)}</div>
                     <div className="text-sell">{formatNumber(t.ask, 5)}</div>
                   </div>

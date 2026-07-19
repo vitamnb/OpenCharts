@@ -82,7 +82,7 @@ export function DOMPanel({
                 </td>
                 <td
                   className={cn(
-                    "text-center font-mono",
+                    "text-center ",
                     l.type === "ask" ? "text-sell" : "text-buy",
                   )}
                 >

@@ -210,7 +210,11 @@ export class DrawingToolsManager {
     if (this.tool === tool) return;
     this.tool = tool;
     this.cancelPlacement();
-    this.applyCursor(null);
+    if (tool === "none") {
+      this.container.style.cursor = "";
+    } else {
+      this.applyCursor(null);
+    }
   }
 
   setMagnetMode(mode: MagnetMode): void {
@@ -319,6 +323,10 @@ export class DrawingToolsManager {
     if (tool === "channel") {
       // Offset line defaults parallel and mirrored below so it's visible/draggable.
       return { ...two, type: "channel", time3: p1.time, price3: 2 * p1.price - p2.price };
+    }
+    if (tool === "hchannel") {
+      // Horizontal channel: two horizontal lines at different prices, full width.
+      return { ...two, type: "hchannel", time3: p2.time, price3: p2.price };
     }
     if (tool === "text") return { ...two, type: "text", text: "Text" };
     return { ...two, type: tool as DrawingType };
@@ -600,7 +608,7 @@ export class DrawingToolsManager {
     if (this.tool !== "none") {
       this.tool = "none";
       this.cancelPlacement();
-      this.applyCursor(null);
+      this.container.style.cursor = "";
       this.cb.onToolFinished();
       return;
     }
@@ -650,7 +658,7 @@ export class DrawingToolsManager {
     };
     this.primitive.setPreview(this.measureResult);
     this.tool = "none";
-    this.applyCursor(null);
+    this.container.style.cursor = "";
     this.cb.onToolFinished();
   }
 
@@ -684,7 +692,7 @@ export class DrawingToolsManager {
     if (this.stayInMode && this.tool !== "none") return; // keep tool armed
     this.select([d.id]);
     this.tool = "none";
-    this.applyCursor(null);
+    this.container.style.cursor = "";
     this.cb.onToolFinished();
   }
 
@@ -698,6 +706,7 @@ export class DrawingToolsManager {
   private selectionStart(pos: Pt, e: TakeoverEvt, isTouch: boolean): Hit | null {
     const entries = this.resolveAll();
     const hit = hitTest(entries, pos, isTouch ? TOUCH_HIT_SCALE : 1);
+    console.log('[DEBUG selectionStart] pos=', pos, 'hit=', hit ? JSON.stringify(hit) : 'null', 'entries=', entries.length);
     if (!hit) {
       if (!e.shiftKey) this.select([]);
       return null;
@@ -710,6 +719,7 @@ export class DrawingToolsManager {
     }
     if (!this.selectedIds.includes(hit.id)) this.select([hit.id]);
     this.beginDrag(hit, pos, entries, isTouch);
+    console.log('[DEBUG selectionStart] after beginDrag, this.drag=', this.drag ? 'SET' : 'NULL');
     return hit;
   }
 
@@ -723,6 +733,7 @@ export class DrawingToolsManager {
   private beginDrag(hit: Hit, pos: Pt, entries: ResolvedEntry[], isTouch: boolean): void {
     const origin = this.drawings.find((d) => d.id === hit.id);
     const originEntry = entries.find((en) => en.d.id === hit.id);
+    console.log('[DEBUG beginDrag] origin=', origin ? origin.id : 'null', 'originEntry=', originEntry ? 'found' : 'null', 'locked=', origin?.locked);
     // Locked drawings are selectable (so they can be unlocked) but never drag.
     if (!origin || !originEntry || origin.locked) return;
     const group = hit.region.kind === "body" ? this.groupFor(hit.id, entries) : [];
@@ -736,6 +747,7 @@ export class DrawingToolsManager {
       moved: false,
       isTouch,
     };
+    console.log('[DEBUG beginDrag] drag SET, hit.region=', JSON.stringify(hit.region));
     this.applyCursor("grabbing");
   }
 
@@ -755,6 +767,7 @@ export class DrawingToolsManager {
   private dragMove(pos: Pt, shiftKey: boolean): void {
     const drag = this.drag!;
     const updates = this.computeDragUpdates(drag, pos, shiftKey);
+    console.log('[DEBUG dragMove] pos=', pos, 'updates=', updates.length, 'region=', JSON.stringify(drag.hit.region));
     if (updates.length === 0) return;
     drag.moved = true;
     const byId = new Map(updates.map((u) => [u.id, u]));
@@ -783,11 +796,31 @@ export class DrawingToolsManager {
   private dragPoint(drag: DragState, pos: Pt, shiftKey: boolean): DrawingLine | null {
     if (drag.hit.region.kind !== "point") return null;
     const pt = this.pointFor(pos, shiftKey, this.dragAnchorPx(drag));
+    console.log('[DEBUG dragPoint] pt=', pt ? JSON.stringify(pt) : 'null', 'timeKey=', drag.hit.region.timeKey, 'priceKey=', drag.hit.region.priceKey);
     if (!pt) return null;
     const updated: DrawingLine = { ...drag.origin };
     const { timeKey, priceKey } = drag.hit.region;
     if (timeKey) updated[timeKey] = pt.time;
     if (priceKey) updated[priceKey] = pt.price;
+
+    // Position tool: dragging entry handle moves stop + target together
+    if (drag.origin.type === "position" && priceKey === "price") {
+      const dPrice = pt.price - drag.origin.price;
+      if (drag.origin.stopPrice != null) {
+        updated.stopPrice = drag.origin.stopPrice + dPrice;
+      }
+      if (drag.origin.targetPrice != null) {
+        updated.targetPrice = drag.origin.targetPrice + dPrice;
+      }
+    }
+
+    // Position tool: prevent width handle from flipping the box
+    if (drag.origin.type === "position" && timeKey === "time2") {
+      if (pt.time < (drag.origin.time ?? 0)) {
+        updated.time2 = drag.origin.time ?? 0;
+      }
+    }
+
     return updated;
   }
 
@@ -808,7 +841,12 @@ export class DrawingToolsManager {
       return p ? { ...origin, time: p.time } : null;
     }
     if (origin.type === "position") return this.shiftPosition(origin, entry, dx, dy);
-    if (origin.type === "channel") return this.shiftChannel(origin, entry, dx, dy);
+    if (origin.type === "channel" || origin.type === "hchannel") return this.shiftChannel(origin, entry, dx, dy);
+    if (origin.type === "text") {
+      // Text has a single anchor (x1,y1) — move it by the pixel delta
+      const p = this.shiftPoint(entry.x1, entry.y1, dx, dy);
+      return p ? { ...origin, time: p.time, price: p.price } : null;
+    }
     const p1 = this.shiftPoint(entry.x1, entry.y1, dx, dy);
     const p2 = this.shiftPoint(entry.x2, entry.y2, dx, dy);
     if (!p1 || !p2) return null;
@@ -994,14 +1032,28 @@ export class DrawingToolsManager {
       this.hoveredId = id;
       this.primitive.setHovered(id);
     }
-    this.applyCursor(hit ? "pointer" : null);
+    if (hit?.region.kind === "point") {
+      this.applyCursor("resize" as any);
+    } else if (hit) {
+      this.applyCursor("pointer");
+    } else {
+      this.applyCursor(null);
+    }
   }
 
-  private applyCursor(interactionCursor: "pointer" | "grabbing" | null): void {
+  private applyCursor(interactionCursor: "pointer" | "grabbing" | "resize" | null): void {
+    if (interactionCursor === "resize") {
+      this.container.style.cursor = "nwse-resize";
+      return;
+    }
     if (interactionCursor) {
       this.container.style.cursor = interactionCursor;
       return;
     }
-    this.container.style.cursor = this.tool !== "none" ? "crosshair" : "";
+    if (this.tool !== "none") {
+      this.container.style.cursor = "crosshair";
+    }
+    // When tool is "none", don't set cursor - let lightweight-charts manage it
+    // (lightweight-charts v5 sets resize cursor on pane separators)
   }
 }

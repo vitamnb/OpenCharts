@@ -162,7 +162,7 @@ export function MarketClosedBanner({ symbolInfo }: Props) {
           <>
             {" "}
             · Opens in{" "}
-            <span className="font-mono tabular-nums">
+            <span className="tabular-nums">
               {formatCountdown(msUntilOpen - (new Date().getTime() - now.getTime()))}
             </span>
           </>

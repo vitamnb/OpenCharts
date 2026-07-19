@@ -80,17 +80,17 @@ export function PositionsTable({
           >
             <td className="font-semibold">{p.symbolName}</td>
             <td className={p.side === "LONG" ? "text-buy" : "text-sell"}>{p.side}</td>
-            <td className="font-mono">{p.quantity}</td>
-            <td className="font-mono">{formatNumber(p.entryPrice, 5)}</td>
-            <td className="font-mono">{p.currentPrice ? formatNumber(p.currentPrice, 5) : "--"}</td>
-            <td className={cn("font-mono font-semibold", pnlClass(p.unrealizedPnl))}>
+            <td className="">{p.quantity}</td>
+            <td className="">{formatNumber(p.entryPrice, 5)}</td>
+            <td className="">{p.currentPrice ? formatNumber(p.currentPrice, 5) : "--"}</td>
+            <td className={cn("font-semibold", pnlClass(p.unrealizedPnl))}>
               {p.unrealizedPnl >= 0 ? "+" : ""}
               {formatCurrency(p.unrealizedPnl)}
             </td>
-            <td className="font-mono text-sell">
+            <td className="text-sell">
               {p.stopLoss ? formatNumber(p.stopLoss, 5) : "--"}
             </td>
-            <td className="font-mono text-buy">
+            <td className="text-buy">
               {p.takeProfit ? formatNumber(p.takeProfit, 5) : "--"}
             </td>
             <td className="text-muted-foreground">{formatDate(p.openedAt)}</td>
@@ -106,7 +106,7 @@ export function PositionsTable({
                     min={0.01}
                     max={p.quantity - 0.01}
                     step="any"
-                    className="w-16 h-5 text-[10px] rounded border border-border bg-background px-1 font-mono"
+                    className="w-16 h-5 text-[10px] rounded border border-border bg-background px-1 "
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handlePartialSubmit(p.id, p.quantity);

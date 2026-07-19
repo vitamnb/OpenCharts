@@ -1,9 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useSyncExternalStore } from "react";
-import { wsClient, type ConnectionState } from "@/services/ws";
+import { wsClient, isLiveMode, type ConnectionState } from "@/services/ws";
 import { useMarketDataHealth } from "@/services/queries";
 import { cn } from "@/lib/utils";
-import { Wifi, WifiOff, Loader2 } from "lucide-react";
+import { Wifi, WifiOff, Loader2, Radio } from "lucide-react";
 
 interface MarketDataHealthSnapshot {
   adapter?: {
@@ -181,6 +181,26 @@ export function DisconnectedTradingBanner({ className }: { className?: string })
       <p className="text-[10px] text-muted-foreground mt-0.5">
         Trading is disabled until the connection is restored
       </p>
+    </div>
+  );
+}
+
+// ── Data Mode Badge (shows DEMO or KUCOIN LIVE) ─────────
+export function DataModeBadge({ className }: { className?: string }) {
+  const live = isLiveMode();
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded",
+        live
+          ? "bg-success/15 text-success border border-success/30"
+          : "bg-muted text-muted-foreground border border-border",
+        className,
+      )}
+      title={live ? "Live data from KuCoin WebSocket" : "Demo data (bundled historical OHLC)"}
+    >
+      <Radio className="h-2.5 w-2.5" />
+      {live ? "LIVE" : "DEMO"}
     </div>
   );
 }

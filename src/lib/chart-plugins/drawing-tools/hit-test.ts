@@ -4,6 +4,53 @@ import type { Hit, PriceKey, ResolvedEntry, TimeKey } from "./types";
 const HANDLE_TOLERANCE = 8;
 const LINE_TOLERANCE = 6;
 
+// ── Text measurement ───────────────────────────────────────────────────────
+//
+// The hit test needs accurate text dimensions to match the rendered text box.
+// We use a shared offscreen canvas for `measureText` so the hit box matches
+// what the user actually sees, not a rough `charCount × 0.6` estimate.
+
+let _measureCtx: CanvasRenderingContext2D | null | undefined;
+
+function measureCtx(): CanvasRenderingContext2D | null {
+  if (_measureCtx === undefined) {
+    _measureCtx =
+      typeof document !== "undefined"
+        ? document.createElement("canvas").getContext("2d")
+        : null;
+  }
+  return _measureCtx;
+}
+
+/**
+ * Measure text width/height in CSS pixels, matching the renderer's font.
+ * Falls back to a rough character-count estimate when no canvas is available
+ * (SSR / test environments without a DOM).
+ */
+function textDimensions(
+  text: string,
+  fontSize: number,
+  bold?: boolean,
+  italic?: boolean,
+): { w: number; h: number } {
+  const lines = text.split("\n");
+  const lineH = fontSize * 1.3;
+  const h = lines.length * lineH;
+  const ctx = measureCtx();
+  if (ctx) {
+    const style = italic ? "italic " : "";
+    const weight = bold ? "bold " : "";
+    ctx.font = `${style}${weight}${Math.round(fontSize)}px sans-serif`;
+    const w = Math.max(...lines.map((l) => ctx.measureText(l).width), 0);
+    // Brave's canvas fingerprinting protection makes measureText return 0
+    // for dynamically created canvas contexts. Fall back to the estimate.
+    if (w > 0) return { w, h };
+  }
+  // Fallback: rough estimate (same as the old heuristic)
+  const longest = lines.reduce((m, l) => Math.max(m, l.length), 4);
+  return { w: longest * fontSize * 0.6, h };
+}
+
 /** Pixel tolerances, scaled up for touch input (fat-finger friendly). */
 interface Tol {
   handle: number;
@@ -43,6 +90,8 @@ function hitEntry(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
       return hitVertical(e, p, tol);
     case "channel":
       return hitChannel(e, p, tol);
+    case "hchannel":
+      return hitHChannel(e, p, tol);
     case "ellipse":
     case "triangle":
       return hitBoxShape(e, p, tol);
@@ -68,7 +117,29 @@ function hitChannel(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
   const dy = e.y3 - e.y1;
   const onMain = distToSegment(p, { x: e.x1, y: e.y1 }, { x: e.x2, y: e.y2 }) <= tol.line;
   const onOff = distToSegment(p, { x: e.x1, y: e.y3 }, { x: e.x2, y: e.y2 + dy }) <= tol.line;
-  return onMain || onOff ? bodyHit(e) : null;
+  // Also allow grabbing anywhere between the two channel lines
+  const inChannel = pointInBox(p, e.x1, Math.min(e.y1, e.y3), e.x2, Math.max(e.y2, e.y2 + dy), 0);
+  return onMain || onOff || inChannel ? bodyHit(e) : null;
+}
+
+// Horizontal channel: two horizontal lines at y1 and y2, full chart width.
+// 2-click tool: click top, click bottom. Both lines span edge-to-edge.
+// Handles are grabbable anywhere along the line (full width), not just at x1.
+function hitHChannel(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
+  if (e.y1 === null || e.y2 === null) return null;
+  // Handle on the first line (move whole channel) - any x position
+  if (Math.abs(p.y - e.y1) <= tol.handle) {
+    return { id: e.d.id, region: { kind: "point", timeKey: "time", priceKey: "price" } };
+  }
+  // Handle on the second line (resize channel height) - any x position
+  if (Math.abs(p.y - e.y2) <= tol.handle) {
+    return { id: e.d.id, region: { kind: "point", timeKey: "time2", priceKey: "price2" } };
+  }
+  // Between the two lines (body grab)
+  const yMin = Math.min(e.y1, e.y2);
+  const yMax = Math.max(e.y1, e.y2);
+  if (p.y >= yMin && p.y <= yMax) return bodyHit(e);
+  return null;
 }
 
 // Ellipse / triangle: corner anchors resize, body = inside the bounding box.
@@ -82,18 +153,18 @@ function hitBoxShape(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
 function hitText(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
   if (e.x1 === null || e.y1 === null) return null;
   const size = e.d.fontSize ?? 14;
-  const lines = (e.d.text ?? "Text").split("\n");
-  const longest = lines.reduce((m, l) => Math.max(m, l.length), 4);
-  const w = longest * size * 0.6;
-  const h = lines.length * size * 1.3;
-  const inside =
-    p.x >= e.x1 - tol.line &&
-    p.x <= e.x1 + w + tol.line &&
-    p.y >= e.y1 - tol.line &&
-    p.y <= e.y1 + h + tol.line;
-  return inside
-    ? { id: e.d.id, region: { kind: "point", timeKey: "time", priceKey: "price" } }
-    : null;
+  const text = e.d.text ?? "Text";
+  const { w, h } = textDimensions(text, size, e.d.bold, e.d.italic);
+  // The renderer adds 4px padding around the text for bg/border. Use the
+  // larger of the measured width and a minimum so short text is still
+  // grabbable.
+  const pad = 4;
+  const left = e.x1 - pad - tol.line;
+  const right = e.x1 + w + pad + tol.line;
+  const top = e.y1 - pad - tol.line;
+  const bottom = e.y1 + h + pad + tol.line;
+  const inside = p.x >= left && p.x <= right && p.y >= top && p.y <= bottom;
+  return inside ? bodyHit(e) : null;
 }
 
 function pointHit(e: ResolvedEntry, timeKey: TimeKey | null, priceKey: PriceKey | null): Hit {
@@ -189,5 +260,12 @@ function hitFibonacci(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
   if (p.x < Math.min(e.x1, e.x2) - tol.line) return null;
   if (p.x > Math.max(e.x1, e.x2) + tol.line) return null;
   const onLevel = e.fibLevels.some((lvl) => lvl.y !== null && Math.abs(p.y - lvl.y) <= tol.line);
-  return onLevel ? bodyHit(e) : null;
+  if (onLevel) return bodyHit(e);
+  // Also allow grabbing anywhere between the fib's vertical range
+  const ys = e.fibLevels.map((lvl) => lvl.y).filter((y): y is number => y !== null);
+  if (ys.length < 2) return null;
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
+  if (p.y >= yMin && p.y <= yMax) return bodyHit(e);
+  return null;
 }

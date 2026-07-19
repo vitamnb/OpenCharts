@@ -104,6 +104,9 @@ export function renderEntry(
     case "channel":
       renderChannel(scope, e);
       break;
+    case "hchannel":
+      renderHChannel(scope, e);
+      break;
     case "ellipse":
       renderEllipse(scope, e);
       break;
@@ -170,6 +173,37 @@ function renderChannel(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry)
     drawHandle(scope, a1, e.d.color);
     drawHandle(scope, b1, e.d.color);
     drawHandle(scope, a2, e.d.color);
+  }
+}
+
+// Horizontal channel: two horizontal lines (top and bottom) spanning the full
+// chart width, with translucent fill between them. A 2-click tool: click top,
+// click bottom. Both lines extend edge-to-edge like horizontal lines.
+function renderHChannel(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry): void {
+  if (e.y1 === null || e.y2 === null) return;
+  const w = scope.bitmapSize.width;
+  const a = toBitmap(scope, 0, e.y1);
+  const b = toBitmap(scope, w, e.y1);
+  const c = toBitmap(scope, 0, e.y2);
+  const d = toBitmap(scope, w, e.y2);
+  const ctx = scope.context;
+  // Fill between the two horizontal lines
+  ctx.save();
+  ctx.fillStyle = hexToRgba(e.d.fillColor ?? e.d.color, e.d.fillOpacity ?? 0.1);
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.lineTo(d.x, d.y);
+  ctx.lineTo(c.x, c.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  const dash = dashFor(e.d.lineStyle);
+  strokeLine(scope, a, b, e.d.color, e.d.width ?? LINE_WIDTH, dash);
+  strokeLine(scope, c, d, e.d.color, e.d.width ?? LINE_WIDTH, dash);
+  if (showHandles(e)) {
+    drawHandle(scope, toBitmap(scope, e.x1 ?? w * 0.3, e.y1), e.d.color);
+    drawHandle(scope, toBitmap(scope, e.x1 ?? w * 0.3, e.y2), e.d.color);
   }
 }
 
@@ -394,7 +428,7 @@ function drawLabelBox(
   const hpr = scope.horizontalPixelRatio;
   const vpr = scope.verticalPixelRatio;
   ctx.save();
-  ctx.font = `${Math.round(10 * vpr)}px monospace`;
+  ctx.font = `${Math.round(10 * vpr)}px sans-serif`;
   const lineH = 13 * vpr;
   const pad = 6 * hpr;
   const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2;
@@ -473,7 +507,7 @@ function drawStatsBox(
   const angleDeg = Math.round((Math.atan2(from.y - at.y, at.x - from.x) * 180) / Math.PI);
   const lines = [...stats, `${angleDeg}°`];
   ctx.save();
-  ctx.font = `${Math.round(10 * vpr)}px monospace`;
+  ctx.font = `${Math.round(10 * vpr)}px sans-serif`;
   const lineH = 13 * vpr;
   const pad = 6 * hpr;
   const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2;
@@ -594,7 +628,7 @@ function renderFibLevel(
   strokeLine(scope, { x: xA, y }, { x: xB, y }, lvl.color, 1);
   const ctx = scope.context;
   ctx.save();
-  ctx.font = `${Math.round(10 * scope.verticalPixelRatio)}px monospace`;
+  ctx.font = `${Math.round(10 * scope.verticalPixelRatio)}px sans-serif`;
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
   ctx.fillStyle = lvl.color;

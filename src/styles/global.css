@@ -76,7 +76,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     font-size: 13px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
@@ -142,7 +142,7 @@
 
 /* ─── Stat Cards ─────────────────────────────────────────── */
 .stat-value {
-  @apply font-mono font-semibold tabular-nums tracking-tight;
+  @apply font-semibold tabular-nums tracking-tight;
 }
 .stat-label {
   @apply text-[10px] text-muted-foreground uppercase tracking-wider font-medium;
@@ -172,7 +172,7 @@
   @apply text-muted-foreground;
 }
 .mono {
-  @apply font-mono;
+  @apply font-sans;
 }
 .text-muted {
   @apply text-muted-foreground;

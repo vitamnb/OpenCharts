@@ -45,6 +45,12 @@ export default defineConfig({
         target: "ws://localhost:3000",
         ws: true,
       },
+      // KuCoin REST proxy (bypasses CORS for browser requests)
+      "/kucoin": {
+        target: "https://api.kucoin.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/kucoin/, ""),
+      },
     },
   },
 });

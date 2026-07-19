@@ -68,7 +68,7 @@ export function ReplayHUD({ accountId }: { accountId: string }) {
         />
       ) : (
         replayCursorTimestamp != null && (
-          <span className="text-[11px] font-mono text-orange-400 tabular-nums">
+          <span className="text-[11px] text-orange-400 tabular-nums">
             {formatReplayTime(replayCursorTimestamp)}
           </span>
         )

@@ -8,7 +8,7 @@ import {
 
 const styles = {
   background: "#ffffff",
-  fontFamily: "-apple-system, BlinkMacSystemFont, 'Trebuchet MS', Roboto, Ubuntu, sans-serif",
+  fontFamily: "sans-serif",
   borderRadius: 5,
   shadowColor: "rgba(0, 0, 0, 0.2)",
   shadowBlur: 4,

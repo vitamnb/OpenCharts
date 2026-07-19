@@ -69,18 +69,18 @@ export function OrdersTable({
             <td className="font-semibold">{o.symbolName}</td>
             <td className={o.side === "BUY" ? "text-buy" : "text-sell"}>{o.side}</td>
             <td>{o.type}</td>
-            <td className="font-mono">{o.quantity}</td>
-            <td className="font-mono">
+            <td className="">{o.quantity}</td>
+            <td className="">
               {o.price
                 ? formatNumber(o.price, 5)
                 : o.stopPrice
                   ? formatNumber(o.stopPrice, 5)
                   : "MKT"}
             </td>
-            <td className="font-mono text-sell">
+            <td className="text-sell">
               {o.stopLoss ? formatNumber(o.stopLoss, 5) : "--"}
             </td>
-            <td className="font-mono text-buy">
+            <td className="text-buy">
               {o.takeProfit ? formatNumber(o.takeProfit, 5) : "--"}
             </td>
             <td>{o.status}</td>

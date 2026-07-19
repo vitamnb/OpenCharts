@@ -37,6 +37,7 @@ import {
   Type,
   X,
 } from "lucide-react";
+import { ConnectionIndicator, DataModeBadge } from "../../components/ConnectionIndicator.tsx";
 import { useEffect, useRef, useState } from "react";
 import { INDICATOR_REGISTRY, type IndicatorType } from "../../lib/indicators.ts";
 import { cn, formatNumber } from "../../lib/utils.ts";
@@ -71,6 +72,8 @@ export interface ChartToolbarProps {
   onToggleIndicator: (type: IndicatorType) => void;
   showIndicatorMenu: boolean;
   onToggleIndicatorMenu: () => void;
+  onOpenIndicatorSettings?: (type: IndicatorType) => void;
+  activeIndicatorParams?: Partial<Record<IndicatorType, Record<string, number>>>;
   drawingTool: DrawingTool;
   onDrawingTool: (t: DrawingTool) => void;
   drawings: DrawingLine[];
@@ -117,6 +120,7 @@ export function ChartToolbar({
   onToggleIndicator,
   showIndicatorMenu,
   onToggleIndicatorMenu,
+  onOpenIndicatorSettings,
   drawingTool,
   onDrawingTool,
   drawings,
@@ -268,14 +272,14 @@ export function ChartToolbar({
       {/* Live Price — bid / ask badges like TradingView */}
       {tick && (
         <div className="flex items-center gap-1 md:gap-1.5 px-1.5 md:px-2 border-l border-r border-border shrink-0">
-          <span className="inline-flex items-center gap-1 px-1 md:px-1.5 py-0.5 rounded bg-[#0ecb81]/15 text-[#0ecb81] font-mono font-bold text-[12px] md:text-[13px] tabular-nums tracking-tight">
+          <span className="inline-flex items-center gap-1 px-1 md:px-1.5 py-0.5 rounded bg-[#0ecb81]/15 text-[#0ecb81] font-bold text-[12px] md:text-[13px] tabular-nums tracking-tight">
             {formatNumber(
               tick.bid,
               symbolInfo?.tickSize ? String(symbolInfo.tickSize).split(".")[1]?.length || 2 : 5,
             )}
           </span>
           <span className="text-muted-foreground text-[10px] font-medium">/</span>
-          <span className="inline-flex items-center gap-1 px-1 md:px-1.5 py-0.5 rounded bg-[#f6465d]/15 text-[#f6465d] font-mono font-bold text-[12px] md:text-[13px] tabular-nums tracking-tight">
+          <span className="inline-flex items-center gap-1 px-1 md:px-1.5 py-0.5 rounded bg-[#f6465d]/15 text-[#f6465d] font-bold text-[12px] md:text-[13px] tabular-nums tracking-tight">
             {formatNumber(
               tick.ask,
               symbolInfo?.tickSize ? String(symbolInfo.tickSize).split(".")[1]?.length || 2 : 5,
@@ -345,24 +349,43 @@ export function ChartToolbar({
           </button>
 
           {showIndicatorMenu && (
-            <div className="absolute top-full left-0 z-50 mt-1 w-64 bg-card border border-border rounded-lg shadow-xl p-2 space-y-0.5">
-              {INDICATOR_REGISTRY.map((ind) => (
-                <button
-                  key={ind.type}
-                  onClick={() => onToggleIndicator(ind.type)}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-secondary text-left",
-                    activeIndicators.includes(ind.type) && "bg-secondary",
-                  )}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ backgroundColor: ind.color }}
-                  />
-                  <span className="flex-1">{ind.label}</span>
-                  <span className="text-[10px] text-muted-foreground">{ind.pane}</span>
-                </button>
-              ))}
+            <div className="absolute top-full left-0 z-50 mt-1 w-72 bg-card border border-border rounded-lg shadow-xl p-2 space-y-0.5">
+              {INDICATOR_REGISTRY.map((ind) => {
+                const isActive = activeIndicators.includes(ind.type);
+                return (
+                  <div
+                    key={ind.type}
+                    className={cn(
+                      "w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-secondary text-left",
+                      isActive && "bg-secondary",
+                    )}
+                  >
+                    <button
+                      onClick={() => onToggleIndicator(ind.type)}
+                      className="flex items-center gap-2 flex-1 min-w-0"
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: ind.color }}
+                      />
+                      <span className="flex-1 truncate">{ind.label}</span>
+                      <span className="text-[10px] text-muted-foreground">{ind.pane}</span>
+                    </button>
+                    {isActive && onOpenIndicatorSettings && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenIndicatorSettings(ind.type);
+                        }}
+                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                        title="Settings"
+                      >
+                        <SlidersHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -436,6 +459,10 @@ export function ChartToolbar({
         >
           <Maximize2 className="h-3 w-3" />
         </button>
+      </div>
+      <div className="flex items-center gap-2 ml-auto shrink-0">
+        <DataModeBadge />
+        <ConnectionIndicator />
       </div>
     </div>
   );
@@ -550,6 +577,7 @@ const DRAWING_TOOLS = [
   { tool: "extended" as const, icon: Spline, label: "Extended Line", shortcut: "" },
   { tool: "vertical" as const, icon: MoveVertical, label: "Vertical Line", shortcut: "" },
   { tool: "channel" as const, icon: Equal, label: "Parallel Channel", shortcut: "" },
+  { tool: "hchannel" as const, icon: MoveVertical, label: "Horizontal Channel", shortcut: "" },
   { tool: "fibextension" as const, icon: Layers3, label: "Fib Extension", shortcut: "" },
   { tool: "ellipse" as const, icon: Circle, label: "Ellipse", shortcut: "" },
   { tool: "arrow" as const, icon: ArrowRight, label: "Arrow", shortcut: "" },

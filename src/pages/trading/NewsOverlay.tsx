@@ -92,18 +92,18 @@ export function NewsOverlay({
                 <div className="flex justify-between text-[11px]">
                   <span className="text-muted-foreground">Actual</span>
                   <span
-                    className={cn("font-bold font-mono", isDark ? "text-white" : "text-gray-900")}
+                    className={cn("font-bold ", isDark ? "text-white" : "text-gray-900")}
                   >
                     {newsPopup.event.actual || "—"}
                   </span>
                 </div>
                 <div className="flex justify-between text-[11px]">
                   <span className="text-muted-foreground">Forecast</span>
-                  <span className="font-mono font-medium">{newsPopup.event.forecast || "—"}</span>
+                  <span className="font-medium">{newsPopup.event.forecast || "—"}</span>
                 </div>
                 <div className="flex justify-between text-[11px]">
                   <span className="text-muted-foreground">Previous</span>
-                  <span className="font-mono text-muted-foreground">
+                  <span className="text-muted-foreground">
                     {newsPopup.event.previous || "—"}
                   </span>
                 </div>
@@ -204,7 +204,7 @@ export function NewsOverlay({
                     onChange={(e) => setNewsConfig((c) => ({ ...c, lineColor: e.target.value }))}
                     className="w-6 h-5 rounded border-0 cursor-pointer p-0 bg-transparent"
                   />
-                  <span className="text-[9px] font-mono text-muted-foreground">
+                  <span className="text-[9px] text-muted-foreground">
                     {newsConfig.lineColor}
                   </span>
                 </div>

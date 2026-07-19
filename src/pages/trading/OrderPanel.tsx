@@ -276,7 +276,7 @@ export function OrderPanel({
               type="number"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
-              className="flex-1 text-center text-sm font-mono"
+              className="flex-1 text-center text-sm "
               step="0.01"
               min="0.01"
             />
@@ -313,7 +313,7 @@ export function OrderPanel({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               placeholder={tick ? formatNumber(side === "BUY" ? tick.ask : tick.bid, 5) : ""}
-              className="w-full mt-1 text-sm font-mono"
+              className="w-full mt-1 text-sm "
               step="0.00001"
             />
           </div>
@@ -328,7 +328,7 @@ export function OrderPanel({
               type="number"
               value={stopPrice}
               onChange={(e) => setStopPrice(e.target.value)}
-              className="w-full mt-1 text-sm font-mono"
+              className="w-full mt-1 text-sm "
               step="0.00001"
             />
           </div>
@@ -344,7 +344,7 @@ export function OrderPanel({
               type="number"
               value={takeProfit}
               onChange={(e) => setTakeProfit(e.target.value)}
-              className="w-full mt-1 text-sm font-mono"
+              className="w-full mt-1 text-sm "
               step="0.00001"
             />
           </div>
@@ -356,7 +356,7 @@ export function OrderPanel({
               type="number"
               value={stopLoss}
               onChange={(e) => setStopLoss(e.target.value)}
-              className="w-full mt-1 text-sm font-mono"
+              className="w-full mt-1 text-sm "
               step="0.00001"
             />
           </div>
@@ -392,20 +392,20 @@ export function OrderPanel({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Risk Amount</span>
-                <span className={cn("font-mono font-semibold", riskColor)}>
+                <span className={cn("font-semibold", riskColor)}>
                   {formatCurrency(riskDollar)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Risk % of Balance</span>
-                <span className={cn("font-mono font-semibold", riskColor)}>
+                <span className={cn("font-semibold", riskColor)}>
                   {riskPct.toFixed(2)}%
                 </span>
               </div>
               {tpDollar != null && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Reward</span>
-                  <span className="font-mono text-buy">{formatCurrency(tpDollar)}</span>
+                  <span className="text-buy">{formatCurrency(tpDollar)}</span>
                 </div>
               )}
               {rrRatio != null && (
@@ -413,7 +413,7 @@ export function OrderPanel({
                   <span className="text-muted-foreground">R:R Ratio</span>
                   <span
                     className={cn(
-                      "font-mono font-semibold",
+                      "font-semibold",
                       rrRatio >= 2 ? "text-buy" : rrRatio >= 1 ? "text-foreground" : "text-sell",
                     )}
                   >

@@ -220,7 +220,7 @@ export function BottomPanel({
 
         {tab === "positions" && openPositions.length > 0 && (
           <div className="ml-auto flex items-center gap-2">
-            <span className={cn("font-mono text-xs font-semibold", pnlClass(totalPnl))}>
+            <span className={cn("text-xs font-semibold", pnlClass(totalPnl))}>
               P&L: {totalPnl >= 0 ? "+" : ""}
               {formatCurrency(totalPnl)}
             </span>
@@ -239,7 +239,7 @@ export function BottomPanel({
         {activeAccount &&
           (tab === "positions" || tab === "orders" || tab === "history") &&
           !(tab === "positions" && openPositions.length > 0) && (
-            <span className="ml-auto text-[10px] text-muted-foreground font-mono px-2">
+            <span className="ml-auto text-[10px] text-muted-foreground px-2">
               {activeAccount.label || accountId?.slice(0, 8)}
             </span>
           )}
@@ -358,26 +358,26 @@ function TradeHistoryTable({ accountId }: { accountId: string | null }) {
             const net = gross - comm;
             return (
               <tr key={t.id} className="hover:bg-secondary/30">
-                <td className="text-muted-foreground font-mono">
+                <td className="text-muted-foreground ">
                   {formatDate(t.closedAt || t.openedAt)}
                 </td>
                 <td className="font-semibold">{t.symbolName}</td>
                 <td className={t.side === "LONG" ? "text-buy" : "text-sell"}>{t.side}</td>
-                <td className="font-mono">{t.quantity}</td>
-                <td className="font-mono">{t.entryPrice ? formatNumber(t.entryPrice, 5) : "--"}</td>
-                <td className="font-mono">{t.exitPrice ? formatNumber(t.exitPrice, 5) : "--"}</td>
-                <td className="font-mono text-muted-foreground">
+                <td className="">{t.quantity}</td>
+                <td className="">{t.entryPrice ? formatNumber(t.entryPrice, 5) : "--"}</td>
+                <td className="">{t.exitPrice ? formatNumber(t.exitPrice, 5) : "--"}</td>
+                <td className="text-muted-foreground">
                   {comm > 0 ? `-${comm.toFixed(2)}` : "0.00"}
                 </td>
                 <td
                   className={cn(
-                    "font-mono",
+                    "",
                     gross >= 0 ? "text-success/70" : "text-destructive/70",
                   )}
                 >
                   {`${gross >= 0 ? "+" : ""}${gross.toFixed(2)}`}
                 </td>
-                <td className={cn("font-mono font-semibold", pnlClass(net))}>
+                <td className={cn("font-semibold", pnlClass(net))}>
                   {`${net >= 0 ? "+" : ""}${net.toFixed(2)}`}
                 </td>
               </tr>
@@ -490,9 +490,9 @@ function EconomicCalendar() {
                   </span>
                 </td>
                 <td>{ev.event}</td>
-                <td className="font-mono">{ev.forecast || "--"}</td>
-                <td className="font-mono text-muted-foreground">{ev.previous || "--"}</td>
-                <td className="font-mono font-semibold">{ev.actual || "--"}</td>
+                <td className="">{ev.forecast || "--"}</td>
+                <td className="text-muted-foreground">{ev.previous || "--"}</td>
+                <td className="font-semibold">{ev.actual || "--"}</td>
               </tr>
             ))}
           </tbody>

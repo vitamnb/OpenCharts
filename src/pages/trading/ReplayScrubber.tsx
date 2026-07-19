@@ -63,7 +63,7 @@ export function ReplayScrubber({ accountId }: { accountId: string }) {
     <div className="h-7 px-3 flex items-center gap-2 bg-card border-t border-border shrink-0 select-none">
       {/* Start time label */}
       {startMs != null && (
-        <span className="text-[10px] text-muted-foreground font-mono tabular-nums shrink-0">
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
           {formatTime(startMs)}
         </span>
       )}
@@ -117,7 +117,7 @@ export function ReplayScrubber({ accountId }: { accountId: string }) {
 
       {/* End time label */}
       {endMs != null && (
-        <span className="text-[10px] text-muted-foreground font-mono tabular-nums shrink-0">
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
           {formatTime(endMs)}
         </span>
       )}

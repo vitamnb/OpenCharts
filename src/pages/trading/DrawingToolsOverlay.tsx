@@ -251,7 +251,7 @@ function ExtendToggles({
   );
 }
 
-const FILLABLE = new Set(["rectangle", "ellipse", "triangle", "channel"]);
+const FILLABLE = new Set(["rectangle", "ellipse", "triangle", "channel", "hchannel"]);
 
 function FillControls({
   drawing,

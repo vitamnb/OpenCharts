@@ -16,7 +16,8 @@ import {
   useChartPreferences,
 } from "../hooks/useChartPreferences.ts";
 import { useTradeSound } from "../hooks/useTradeSound";
-import type { IndicatorType } from "../lib/indicators.ts";
+import type { IndicatorType, IndicatorParams, IndicatorAppearance } from "../lib/indicators.ts";
+import { getDefaultParams, getDefaultAppearance } from "../lib/indicators.ts";
 import { posthog } from "../lib/posthog";
 import type { CreateJournalEntryInput, UpdateJournalEntryInput } from "../services/api/journal.ts";
 import { api } from "../services/api.ts";
@@ -33,10 +34,12 @@ import {
 } from "../services/queries.ts";
 import type { Order, PlaceOrderInput, Position, Symbol } from "../services/schemas.ts";
 import { useTradingStore } from "../services/store.tsx";
+import { wsClient } from "../services/ws.ts";
 import { toast } from "../services/toast.ts";
 import { AiTraderPanel } from "./AiTraderPage.tsx";
 import { BottomPanel } from "./trading/BottomPanel.tsx";
 import { ChartPanel } from "./trading/ChartPanel.tsx";
+import { IndicatorDialog } from "./trading/IndicatorDialog.tsx";
 import { ChartToolbar } from "./trading/ChartToolbar.tsx";
 import {
   type DrawingTool,
@@ -114,8 +117,70 @@ export function TradingPage() {
     if (saved && TIMEFRAMES.includes(saved as Timeframe)) setTimeframe(saved as Timeframe);
   }, [selectedSymbol]);
 
-  const [activeIndicators, setActiveIndicators] = useState<IndicatorType[]>([]);
+  // ── Indicator persistence (per-symbol, survives refresh) ──
+  const [activeIndicators, setActiveIndicators] = useState<IndicatorType[]>(() => {
+    try {
+      const saved = localStorage.getItem(`ind_${selectedSymbol}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [indicatorParams, setIndicatorParams] = useState<Partial<Record<IndicatorType, IndicatorParams>>>(() => {
+    try {
+      const saved = localStorage.getItem(`indparams_${selectedSymbol}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const [indicatorAppearance, setIndicatorAppearance] = useState<Partial<Record<IndicatorType, IndicatorAppearance>>>(() => {
+    try {
+      const saved = localStorage.getItem(`indappear_${selectedSymbol}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  // Save indicators to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(`ind_${selectedSymbol}`, JSON.stringify(activeIndicators));
+  }, [activeIndicators, selectedSymbol]);
+  useEffect(() => {
+    localStorage.setItem(`indparams_${selectedSymbol}`, JSON.stringify(indicatorParams));
+  }, [indicatorParams, selectedSymbol]);
+  useEffect(() => {
+    localStorage.setItem(`indappear_${selectedSymbol}`, JSON.stringify(indicatorAppearance));
+  }, [indicatorAppearance, selectedSymbol]);
+
+  // Restore indicator state when symbol changes
+  useEffect(() => {
+    try {
+      const savedInds = localStorage.getItem(`ind_${selectedSymbol}`);
+      setActiveIndicators(savedInds ? JSON.parse(savedInds) : []);
+      const savedParams = localStorage.getItem(`indparams_${selectedSymbol}`);
+      setIndicatorParams(savedParams ? JSON.parse(savedParams) : {});
+      const savedAppear = localStorage.getItem(`indappear_${selectedSymbol}`);
+      setIndicatorAppearance(savedAppear ? JSON.parse(savedAppear) : {});
+    } catch {
+      setActiveIndicators([]);
+      setIndicatorParams({});
+      setIndicatorAppearance({});
+    }
+  }, [selectedSymbol]);
+  // Indicators hidden via nametag visibility toggle (persisted per-symbol)
+  const [hiddenIndicators, setHiddenIndicators] = useState<IndicatorType[]>(() => {
+    try {
+      const saved = localStorage.getItem(`indhidden_${selectedSymbol}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    localStorage.setItem(`indhidden_${selectedSymbol}`, JSON.stringify(hiddenIndicators));
+  }, [hiddenIndicators, selectedSymbol]);
+  useEffect(() => {
+    try {
+      const savedHidden = localStorage.getItem(`indhidden_${selectedSymbol}`);
+      setHiddenIndicators(savedHidden ? JSON.parse(savedHidden) : []);
+    } catch { setHiddenIndicators([]); }
+  }, [selectedSymbol]);
   const [showIndicatorMenu, setShowIndicatorMenu] = useState(false);
+  const [showIndicatorDialog, setShowIndicatorDialog] = useState<IndicatorType | null>(null);
   const [drawingTool, setDrawingTool] = useState<DrawingTool>("none");
   const {
     drawings,
@@ -245,6 +310,11 @@ export function TradingPage() {
     };
   }, [selectedSymbol, updateTick]);
 
+  // Notify the WS client of the active symbol + timeframe so KuCoin can subscribe to the right channels
+  useEffect(() => {
+    wsClient.setSymbolInterest([selectedSymbol], timeframe);
+  }, [selectedSymbol, timeframe]);
+
   // Handler for chart drag-to-edit SL/TP levels
   const handleChartModifyPosition = useCallback(
     async (positionId: string, mods: { takeProfit?: number | null; stopLoss?: number | null }) => {
@@ -314,7 +384,8 @@ export function TradingPage() {
 
   const handleClearIndicators = useCallback(() => {
     setActiveIndicators([]);
-  }, []);
+    localStorage.removeItem(`ind_${selectedSymbol}`);
+  }, [selectedSymbol]);
 
   // Deep-history target used after the initial fast render completes.
   const deepCandleLimit = useMemo(() => {
@@ -424,13 +495,26 @@ export function TradingPage() {
         timeframe={timeframe}
         onTimeframeChange={handleTimeframeChange}
         activeIndicators={activeIndicators}
-        onToggleIndicator={(type) =>
-          setActiveIndicators((prev) =>
-            prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-          )
-        }
+        onToggleIndicator={(type) => {
+          setActiveIndicators((prev) => {
+            if (prev.includes(type)) {
+              return prev.filter((t) => t !== type);
+            }
+            // Initialize params and appearance from defaults when turning on
+            setIndicatorParams((prev) =>
+              prev[type] ? prev : { ...prev, [type]: getDefaultParams(type) },
+            );
+            setIndicatorAppearance((prev) =>
+              prev[type] ? prev : { ...prev, [type]: getDefaultAppearance(type) },
+            );
+            return [...prev, type];
+          });
+        }}
         showIndicatorMenu={showIndicatorMenu}
         onToggleIndicatorMenu={() => setShowIndicatorMenu((v) => !v)}
+        onOpenIndicatorSettings={(type) => setShowIndicatorDialog(type)}
+        onOpenIndicatorAppearance={(type) => setShowIndicatorDialog(type)}
+        activeIndicatorParams={indicatorParams}
         drawingTool={drawingTool}
         onDrawingTool={setDrawingTool}
         drawings={drawings}
@@ -470,6 +554,16 @@ export function TradingPage() {
               timeframe={replayCandles ? "1m" : timeframe}
               isDark={isDark}
               activeIndicators={activeIndicators}
+              hiddenIndicators={hiddenIndicators}
+              onToggleIndicatorVisibility={(type) => {
+                setHiddenIndicators((prev) =>
+                  prev.includes(type)
+                    ? prev.filter((t) => t !== type)
+                    : [...prev, type],
+                );
+              }}
+              indicatorParams={indicatorParams}
+              indicatorAppearance={indicatorAppearance}
               drawingTool={drawingTool}
               drawings={drawings}
               onAddDrawing={addDrawing}
@@ -481,6 +575,10 @@ export function TradingPage() {
               onRedoDrawing={redoDrawing}
               magnetMode={chartPrefs.magnetMode}
               stayInDrawingMode={chartPrefs.stayInDrawingMode}
+              onCycleMagnet={cycleMagnetMode}
+              onToggleStayInDrawingMode={() =>
+                updateChartPreferences({ stayInDrawingMode: !chartPrefs.stayInDrawingMode })
+              }
               positions={chartPositions}
               orders={chartOrders}
               tick={replayCandles ? undefined : tick}
@@ -497,8 +595,31 @@ export function TradingPage() {
               onQuickOrder={handleQuickOrder}
               onClearDrawings={clearDrawings}
               onClearIndicators={handleClearIndicators}
+              onOpenIndicatorSettings={(type) => setShowIndicatorDialog(type)}
+              onOpenIndicatorAppearance={(type) => setShowIndicatorDialog(type)}
+              onToggleIndicator={(type) => {
+                setActiveIndicators((prev) =>
+                  prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
+                );
+              }}
             />
           </div>
+
+          {/* Indicator Dialog (Settings + Appearance) */}
+          {showIndicatorDialog && (
+            <IndicatorDialog
+              type={showIndicatorDialog}
+              params={indicatorParams[showIndicatorDialog] ?? getDefaultParams(showIndicatorDialog)}
+              appearance={indicatorAppearance[showIndicatorDialog] ?? getDefaultAppearance(showIndicatorDialog)}
+              onParamsChange={(params) =>
+                setIndicatorParams((prev) => ({ ...prev, [showIndicatorDialog]: params }))
+              }
+              onAppearanceChange={(app) =>
+                setIndicatorAppearance((prev) => ({ ...prev, [showIndicatorDialog]: app }))
+              }
+              onClose={() => setShowIndicatorDialog(null)}
+            />
+          )}
 
           {/* Replay timeline scrubber — disabled until the feature is QA'd */}
           {REPLAY_ENABLED && isReplaying && activeAccountId != null && (

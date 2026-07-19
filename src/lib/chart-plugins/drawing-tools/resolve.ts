@@ -141,7 +141,7 @@ export function resolveEntry(d: DrawingLine, ctx: ResolveCtx, state: EntryState)
     entry.yStop = d.stopPrice != null ? ctx.series.priceToCoordinate(d.stopPrice) : null;
     entry.yTarget = d.targetPrice != null ? ctx.series.priceToCoordinate(d.targetPrice) : null;
   }
-  if (d.type === "channel") {
+  if (d.type === "channel" || d.type === "hchannel") {
     entry.x3 = d.time3 != null ? timeToX(ctx, d.time3) : null;
     entry.y3 = d.price3 != null ? ctx.series.priceToCoordinate(d.price3) : null;
   }

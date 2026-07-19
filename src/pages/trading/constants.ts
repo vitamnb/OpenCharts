@@ -122,6 +122,7 @@ export type DrawingTool =
   | "ray"
   | "extended"
   | "channel"
+  | "hchannel"
   | "text"
   | "fibextension"
   | "ellipse"
