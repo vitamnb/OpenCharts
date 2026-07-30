@@ -57,7 +57,7 @@ export function fromKucoinSymbol(kucoinSymbol: string): string {
 
 /**
  * Map OpenCharts timeframe strings to KuCoin candle types.
- * OpenCharts uses: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
+ * OpenCharts uses: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M
  * KuCoin uses: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 8hour, 12hour, 1day, 1week, 1month
  */
 const TIMEFRAME_MAP: Record<string, string> = {
@@ -74,6 +74,7 @@ const TIMEFRAME_MAP: Record<string, string> = {
   "12h": "12hour",
   "1d": "1day",
   "1w": "1week",
+  "1M": "1month",
 };
 
 export function toKucoinTimeframe(tf: string): string {

@@ -92,6 +92,9 @@ export function renderEntry(
     case "rectangle":
       renderRectangle(scope, e);
       break;
+    case "measure":
+      renderMeasure(scope, e);
+      break;
     case "fibonacci":
       renderFibonacci(scope, e);
       break;
@@ -100,6 +103,9 @@ export function renderEntry(
       break;
     case "vertical":
       renderVertical(scope, e);
+      break;
+    case "crossline":
+      renderCrossline(scope, e);
       break;
     case "channel":
       renderChannel(scope, e);
@@ -122,6 +128,9 @@ export function renderEntry(
     case "fibextension":
       renderFibonacci(scope, e);
       break;
+    case "brush":
+      renderBrush(scope, e);
+      break;
     default:
       break;
   }
@@ -142,6 +151,35 @@ function renderVertical(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry
   );
   if (showHandles(e)) {
     drawHandle(scope, { x, y: Math.round(scope.bitmapSize.height / 2) }, e.d.color);
+  }
+}
+
+// Crossline: vertical + horizontal line through a single point.
+function renderCrossline(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry): void {
+  if (e.x1 !== null) {
+    const x = Math.round(e.x1 * scope.horizontalPixelRatio);
+    strokeLine(
+      scope,
+      { x, y: 0 },
+      { x, y: scope.bitmapSize.height },
+      e.d.color,
+      e.d.width ?? 1.5,
+      dashFor(e.d.lineStyle),
+    );
+  }
+  if (e.y1 !== null) {
+    const y = Math.round(e.y1 * scope.verticalPixelRatio);
+    strokeLine(
+      scope,
+      { x: 0, y },
+      { x: scope.bitmapSize.width, y },
+      e.d.color,
+      e.d.width ?? 1.5,
+      dashFor(e.d.lineStyle),
+    );
+  }
+  if (showHandles(e) && e.x1 !== null && e.y1 !== null) {
+    drawHandle(scope, { x: Math.round(e.x1 * scope.horizontalPixelRatio), y: Math.round(e.y1 * scope.verticalPixelRatio) }, e.d.color);
   }
 }
 
@@ -323,12 +361,7 @@ function renderText(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry): v
   ctx.fillStyle = e.d.color;
   lines.forEach((l, i) => ctx.fillText(l, at.x, at.y + i * lineH));
 
-  if (showHandles(e)) {
-    ctx.strokeStyle = e.d.color;
-    ctx.lineWidth = hpr;
-    ctx.setLineDash([3 * hpr, 3 * hpr]);
-    ctx.strokeRect(bx, by, boxW, boxH);
-  }
+  if (showHandles(e)) drawRectHandles(scope, { x: bx, y: by }, { x: bx + boxW, y: by + boxH }, e.d.color);
   ctx.restore();
 }
 
@@ -428,8 +461,8 @@ function drawLabelBox(
   const hpr = scope.horizontalPixelRatio;
   const vpr = scope.verticalPixelRatio;
   ctx.save();
-  ctx.font = `${Math.round(10 * vpr)}px sans-serif`;
-  const lineH = 13 * vpr;
+  ctx.font = `bold ${Math.round(12 * vpr)}px sans-serif`;
+  const lineH = 15 * vpr;
   const pad = 6 * hpr;
   const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2;
   const height = lines.length * lineH + pad;
@@ -507,8 +540,8 @@ function drawStatsBox(
   const angleDeg = Math.round((Math.atan2(from.y - at.y, at.x - from.x) * 180) / Math.PI);
   const lines = [...stats, `${angleDeg}°`];
   ctx.save();
-  ctx.font = `${Math.round(10 * vpr)}px sans-serif`;
-  const lineH = 13 * vpr;
+  ctx.font = `bold ${Math.round(12 * vpr)}px sans-serif`;
+  const lineH = 15 * vpr;
   const pad = 6 * hpr;
   const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + pad * 2;
   const height = lines.length * lineH + pad;
@@ -590,6 +623,71 @@ function drawRectHandles(
   drawHandle(scope, { x: b.x, y: a.y }, color);
 }
 
+// Measure tool: a transient (preview-only) rectangle from anchor 1 to anchor 2
+// with a stats readout. Visually distinct from the rectangle drawing tool so
+// users can tell at a glance which one is up — dashed border and a lighter
+// fill — and uses a neutral grey so it doesn't compete with the trade they
+// may be measuring.
+const MEASURE_FILL_ALPHA = 0.08;
+
+function renderMeasure(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry): void {
+  if (e.x1 === null || e.y1 === null || e.x2 === null || e.y2 === null) return;
+  const a = toBitmap(scope, e.x1, e.y1);
+  const b = toBitmap(scope, e.x2, e.y2);
+  const ctx = scope.context;
+  ctx.save();
+  ctx.fillStyle = hexToRgba(e.d.color, MEASURE_FILL_ALPHA);
+  ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+  ctx.strokeStyle = e.d.color;
+  ctx.lineWidth = (e.d.width ?? 1.5) * scope.verticalPixelRatio;
+  // Force the dashed look even if a future style default tries to override it
+  // — the measure tool is a gesture, not a user-customised drawing.
+  applyDash(scope, dashFor(e.d.lineStyle ?? "dashed"));
+  ctx.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+  ctx.restore();
+  if (e.stats && e.stats.length > 0) drawMeasureStatsBox(scope, a, b, e.stats, e.d.color);
+}
+
+// Measure readout: sits centred above the rectangle when there is room, with
+// a connecting tick down to the box top edge so the eye can line it up with
+// the measured range. The reconnecting line is short and subtle.
+function drawMeasureStatsBox(
+  scope: BitmapCoordinatesRenderingScope,
+  a: BPt,
+  b: BPt,
+  stats: string[],
+  borderColor: string,
+): void {
+  const ctx = scope.context;
+  const hpr = scope.horizontalPixelRatio;
+  const vpr = scope.verticalPixelRatio;
+  ctx.save();
+  ctx.font = `bold ${Math.round(12 * vpr)}px sans-serif`;
+  const lineH = 15 * vpr;
+  const pad = 6 * hpr;
+  const width = Math.max(...stats.map((l) => ctx.measureText(l).width)) + pad * 2;
+  const height = stats.length * lineH + pad;
+  const rectTop = Math.min(a.y, b.y);
+  const rectCx = (a.x + b.x) / 2;
+  // Anchor the box just above the rectangle; if there's no room, fall through
+  // to below the box. Keep the box on-screen on both edges.
+  let x = rectCx - width / 2;
+  x = Math.max(0, Math.min(x, scope.bitmapSize.width - width));
+  let y = rectTop - height - 6 * vpr;
+  if (y < 0) y = Math.min(Math.max(a.y, b.y) + 6 * vpr, scope.bitmapSize.height - height);
+  ctx.fillStyle = "rgba(20, 24, 35, 0.92)";
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, 4 * hpr);
+  ctx.fill();
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = "#e0e3ea";
+  ctx.textBaseline = "top";
+  stats.forEach((line, i) => ctx.fillText(line, x + pad, y + pad / 2 + i * lineH));
+  ctx.restore();
+}
+
 function renderFibonacci(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry): void {
   if (e.x1 === null || e.x2 === null || !e.fibLevels || e.fibLevels.length === 0) return;
   const xA = Math.round(Math.min(e.x1, e.x2) * scope.horizontalPixelRatio);
@@ -647,4 +745,41 @@ function renderFibConnector(scope: BitmapCoordinatesRenderingScope, e: ResolvedE
     drawHandle(scope, a, e.d.color);
     drawHandle(scope, b, e.d.color);
   }
+}
+
+// Freehand brush stroke: smooth polyline through captured points.
+function renderBrush(scope: BitmapCoordinatesRenderingScope, e: ResolvedEntry): void {
+  const pts = e.brushPoints;
+  if (!pts || pts.length < 2) return;
+
+  // Convert all valid points to bitmap space.
+  const bpts: BPt[] = [];
+  for (const p of pts) {
+    if (p.x === null || p.y === null) continue;
+    bpts.push(toBitmap(scope, p.x, p.y));
+  }
+  if (bpts.length < 2) return;
+
+  const ctx = scope.context;
+  ctx.save();
+  ctx.strokeStyle = e.d.color;
+  ctx.lineWidth = (e.d.width ?? 2) * scope.horizontalPixelRatio;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  const dash = dashFor(e.d.lineStyle);
+  if (dash) applyDash(scope, dash);
+
+  // Quadratic curve smoothing: midpoints between consecutive points become
+  // control points, actual points become the start/end of each segment.
+  ctx.beginPath();
+  ctx.moveTo(bpts[0]!.x, bpts[0]!.y);
+  for (let i = 1; i < bpts.length - 1; i++) {
+    const midX = (bpts[i]!.x + bpts[i + 1]!.x) / 2;
+    const midY = (bpts[i]!.y + bpts[i + 1]!.y) / 2;
+    ctx.quadraticCurveTo(bpts[i]!.x, bpts[i]!.y, midX, midY);
+  }
+  ctx.lineTo(bpts[bpts.length - 1]!.x, bpts[bpts.length - 1]!.y);
+  ctx.stroke();
+  ctx.restore();
 }

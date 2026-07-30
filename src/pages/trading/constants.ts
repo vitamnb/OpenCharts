@@ -1,6 +1,6 @@
 // ── Trading Page Constants ────────────────────────────────────────────────────
 
-export const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"] as const;
+export const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w", "1M"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
 /**
@@ -131,12 +131,14 @@ export type DrawingTool =
   | "position"
   | "long-position"
   | "short-position"
-  | "measure";
+  | "measure"
+  | "brush"
+  | "crossline";
 
 /** Stored drawing kinds (excludes placement-only aliases). */
 export type DrawingType = Exclude<
   DrawingTool,
-  "none" | "ray" | "extended" | "long-position" | "short-position" | "measure"
+  "none" | "ray" | "extended" | "long-position" | "short-position"
 >;
 
 export type DrawingLineStyle = "solid" | "dashed" | "dotted";
@@ -154,6 +156,8 @@ export interface DrawingLine {
   /** Third anchor — parallel-channel offset line. */
   price3?: number;
   time3?: number;
+  /** Freehand brush stroke: array of (time, price) points captured during drag. */
+  points?: { time: number; price: number }[];
   color: string;
   // v2 style/behavior fields — all optional so v1 drawings load unchanged
   /** Line width in px (default 2). */
@@ -232,6 +236,7 @@ export const TF_INTERVAL_MS: Record<Timeframe, number> = {
   "4h": 4 * 60 * 60_000,
   "1d": 24 * 60 * 60_000,
   "1w": 7 * 24 * 60 * 60_000,
+  "1M": 30 * 24 * 60 * 60_000,
 };
 
 export const KNOWN_CURRENCIES = [

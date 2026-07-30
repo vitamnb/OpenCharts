@@ -38,6 +38,8 @@ export interface ResolvedEntry {
   /** Third anchor (parallel channel offset line). */
   x3?: number | null;
   y3?: number | null;
+  /** Freehand brush stroke points resolved to pixel space. */
+  brushPoints?: { x: number | null; y: number | null }[];
   state: EntryState;
 }
 

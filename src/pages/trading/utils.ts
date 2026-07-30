@@ -47,14 +47,23 @@ export function toUnixMs(ts: number): number {
 }
 
 /** Convert candles for indicator lib */
-export function toIndicatorCandles(candles: CandlestickData<Time>[]): CandleData[] {
+export function toIndicatorCandles(
+  candles: CandlestickData<Time>[],
+  volumeData?: Array<{ time: Time; value: number }>,
+): CandleData[] {
+  const volMap = new Map<number, number>();
+  if (volumeData) {
+    for (const v of volumeData) {
+      volMap.set(v.time as number, v.value);
+    }
+  }
   return candles.map((c) => ({
     time: c.time as number,
     open: c.open,
     high: c.high,
     low: c.low,
     close: c.close,
-    volume: 0,
+    volume: volMap.get(c.time as number) ?? 0,
   }));
 }
 
@@ -93,6 +102,7 @@ export function getCandleBucketTime(timestampMs: number, tf: Timeframe): number 
     "4h": 4 * 60 * 60 * SEC,
     "1d": 24 * 60 * 60 * SEC,
     "1w": 7 * 24 * 60 * 60 * SEC,
+    "1M": 30 * 24 * 60 * 60 * SEC,
   };
   const ms = intervals[tf];
   return Math.floor((Math.floor(timestampMs / ms) * ms) / 1000);

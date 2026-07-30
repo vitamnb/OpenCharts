@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { TrendingUp, Clock, History, Globe, Newspaper, Bot } from "lucide-react";
+import { TrendingUp, Clock, History, Globe, Newspaper, Bot, ChevronDown } from "lucide-react";
 import { useAuthStore } from "../../services/store.tsx";
 import { useTradingStore } from "../../services/store.tsx";
 import {
@@ -84,6 +84,7 @@ export function BottomPanel({
   const closeAllPositions = useCloseAllPositions();
   const accounts = useTradingStore((s) => s.accounts as AccountOption[]);
   const activeAccount = accounts.find((account) => account.id === accountId);
+  const [collapsed, setCollapsed] = useState(true);
 
   const handleCancel = (orderId: string) => {
     if (!accountId || isDemo) {
@@ -193,7 +194,7 @@ export function BottomPanel({
   return (
     <div
       className="border-t border-border flex flex-col shrink-0 bg-card max-h-[150px] md:max-h-none"
-      style={{ height }}
+      style={{ height: collapsed ? "auto" : height }}
     >
       {/* Tab bar */}
       <div className="flex items-center gap-0.5 px-2 py-1 border-b border-border bg-secondary text-xs overflow-x-auto no-scrollbar">
@@ -202,7 +203,7 @@ export function BottomPanel({
             key={t.key}
             onClick={() => onTabChange(t.key)}
             className={cn(
-              "flex items-center gap-1 px-2.5 py-1 rounded shrink-0 whitespace-nowrap",
+              "flex items-center gap-1 px-2.5 py-1 rounded shrink-0 whitespace-nowrap text-[13px] font-semibold",
               tab === t.key
                 ? "bg-card text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -243,9 +244,24 @@ export function BottomPanel({
               {activeAccount.label || accountId?.slice(0, 8)}
             </span>
           )}
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className={cn(
+            "flex items-center justify-center w-6 h-5 rounded shrink-0 transition-colors",
+            collapsed
+              ? "hover:bg-secondary text-muted-foreground hover:text-foreground"
+              : "ml-auto hover:bg-secondary text-muted-foreground hover:text-foreground",
+          )}
+          title={collapsed ? "Expand panel" : "Collapse panel"}
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", collapsed && "rotate-180")} />
+        </button>
       </div>
 
       {/* Content */}
+      {!collapsed && (
       <div className="flex-1 overflow-auto">
         {tab === "positions" && (
           <PositionsTable
@@ -294,6 +310,7 @@ export function BottomPanel({
         {tab === "news" && <NewsFeed />}
         {tab === "ai-trader" && <AiTraderPanel accountId={accountId} />}
       </div>
+      )}
     </div>
   );
 }

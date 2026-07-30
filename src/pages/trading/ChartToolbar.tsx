@@ -24,6 +24,7 @@ import {
   MoveVertical,
   Newspaper,
   Pencil,
+  Plus,
   Repeat,
   Ruler,
   Search,
@@ -39,7 +40,8 @@ import {
 } from "lucide-react";
 import { ConnectionIndicator, DataModeBadge } from "../../components/ConnectionIndicator.tsx";
 import { useEffect, useRef, useState } from "react";
-import { INDICATOR_REGISTRY, type IndicatorType } from "../../lib/indicators.ts";
+import { IndicatorCommandPalette } from "./IndicatorCommandPalette.tsx";
+import { type IndicatorType } from "../../lib/indicators.ts";
 import { cn, formatNumber } from "../../lib/utils.ts";
 import {
   type DrawingLine,
@@ -73,7 +75,8 @@ export interface ChartToolbarProps {
   showIndicatorMenu: boolean;
   onToggleIndicatorMenu: () => void;
   onOpenIndicatorSettings?: (type: IndicatorType) => void;
-  activeIndicatorParams?: Partial<Record<IndicatorType, Record<string, number>>>;
+  onOpenIndicatorAppearance?: (type: IndicatorType) => void;
+  activeIndicatorParams?: Partial<Record<IndicatorType, Record<string, number | string | boolean>>>;
   drawingTool: DrawingTool;
   onDrawingTool: (t: DrawingTool) => void;
   drawings: DrawingLine[];
@@ -120,7 +123,6 @@ export function ChartToolbar({
   onToggleIndicator,
   showIndicatorMenu,
   onToggleIndicatorMenu,
-  onOpenIndicatorSettings,
   drawingTool,
   onDrawingTool,
   drawings,
@@ -145,6 +147,7 @@ export function ChartToolbar({
 }: ChartToolbarProps) {
   const [showSymbolSearch, setShowSymbolSearch] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState("");
+  const [tfOpen, setTfOpen] = useState(false);
 
   const filteredSymbols = symbols.filter(
     (s) =>
@@ -291,25 +294,42 @@ export function ChartToolbar({
         </div>
       )}
 
-      {/* Timeframe Selector — locked to 1m while a replay session is active */}
-      <div className="flex items-center gap-0.5 ml-1 shrink-0">
-        {TIMEFRAMES.map((tf) => (
-          <button
-            key={tf}
-            onClick={() => onTimeframeChange(tf)}
-            disabled={isReplaying}
-            title={isReplaying ? "Timeframe is fixed to 1m during replay" : undefined}
-            className={cn(
-              "px-2 py-1 rounded-md text-xs font-medium transition-all",
-              tf === timeframe
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "hover:bg-secondary/80 text-muted-foreground hover:text-foreground",
-              isReplaying && "opacity-40 cursor-default",
-            )}
+      {/* Timeframe Selector — dropdown, locked to 1m while a replay session is active */}
+      <div className="relative ml-1 shrink-0" data-tf-dropdown>
+        <button
+          onClick={() => setTfOpen((v) => !v)}
+          disabled={isReplaying}
+          title={isReplaying ? "Timeframe is fixed to 1m during replay" : undefined}
+          className={cn(
+            "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all",
+            isReplaying ? "opacity-40 cursor-default" : "hover:bg-secondary/80 text-foreground",
+          )}
+        >
+          <span className="bg-primary text-primary-foreground rounded px-1.5 py-0.5 text-[11px] font-semibold">{timeframe}</span>
+          <ChevronDown className={cn("h-3 w-3 transition-transform", tfOpen && "rotate-180")} />
+        </button>
+      {tfOpen && (
+                    <div
+            className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[120px]"
+            onMouseLeave={() => setTfOpen(false)}
           >
-            {tf}
-          </button>
-        ))}
+            <div className="px-1 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Timeframe</div>
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf}
+                onClick={() => { onTimeframeChange(tf); setTfOpen(false); }}
+                className={cn(
+                  "w-full text-left px-2 py-1 rounded text-xs font-medium transition-colors",
+                  tf === timeframe
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-secondary text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {tf}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Session replay controls — disabled until the feature is QA'd */}
@@ -327,7 +347,7 @@ export function ChartToolbar({
 
       <div className="h-4 border-l border-border mx-1 hidden md:block" />
 
-      {/* Indicators */}
+      {/* Indicators — command palette */}
       {
         <div className="relative hidden md:block">
           <button
@@ -342,52 +362,18 @@ export function ChartToolbar({
             <BarChart3 className="h-3 w-3" />
             Indicators
             {activeIndicators.length > 0 && (
-              <span className="bg-primary text-primary-foreground rounded-full px-1 text-[9px]">
+              <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[9px]">
                 {activeIndicators.length}
               </span>
             )}
           </button>
 
-          {showIndicatorMenu && (
-            <div className="absolute top-full left-0 z-50 mt-1 w-72 bg-card border border-border rounded-lg shadow-xl p-2 space-y-0.5">
-              {INDICATOR_REGISTRY.map((ind) => {
-                const isActive = activeIndicators.includes(ind.type);
-                return (
-                  <div
-                    key={ind.type}
-                    className={cn(
-                      "w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm hover:bg-secondary text-left",
-                      isActive && "bg-secondary",
-                    )}
-                  >
-                    <button
-                      onClick={() => onToggleIndicator(ind.type)}
-                      className="flex items-center gap-2 flex-1 min-w-0"
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: ind.color }}
-                      />
-                      <span className="flex-1 truncate">{ind.label}</span>
-                      <span className="text-[10px] text-muted-foreground">{ind.pane}</span>
-                    </button>
-                    {isActive && onOpenIndicatorSettings && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenIndicatorSettings(ind.type);
-                        }}
-                        className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                        title="Settings"
-                      >
-                        <SlidersHorizontal className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <IndicatorCommandPalette
+            open={showIndicatorMenu}
+            onClose={onToggleIndicatorMenu}
+            onSelect={onToggleIndicator}
+            activeIndicators={activeIndicators}
+          />
         </div>
       }
 
@@ -415,16 +401,16 @@ export function ChartToolbar({
       {/* Right Panel Toggles */}
       <div className="hidden md:flex items-center gap-0.5">
         <ToolButton
-          icon={ArrowUpDown}
-          tooltip="Order Panel"
-          active={showRightPanel && rightPanel === "order"}
-          onClick={() => onRightPanel("order")}
-        />
-        <ToolButton
           icon={Layers}
           tooltip="Depth of Market"
           active={showRightPanel && rightPanel === "dom"}
           onClick={() => onRightPanel("dom")}
+        />
+        <ToolButton
+          icon={ArrowUpDown}
+          tooltip="Order Panel"
+          active={showRightPanel && rightPanel === "order"}
+          onClick={() => onRightPanel("order")}
         />
         <ToolButton
           icon={BarChart3}
@@ -537,7 +523,7 @@ function PluginsDropdown({
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />
         {isActive && (
-          <span className="bg-primary text-primary-foreground rounded-full px-1 text-[9px]">
+          <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[9px]">
             {activePlugins.length}
           </span>
         )}
@@ -576,6 +562,7 @@ const DRAWING_TOOLS = [
   { tool: "ray" as const, icon: MoveUpRight, label: "Ray", shortcut: "" },
   { tool: "extended" as const, icon: Spline, label: "Extended Line", shortcut: "" },
   { tool: "vertical" as const, icon: MoveVertical, label: "Vertical Line", shortcut: "" },
+  { tool: "crossline" as const, icon: Plus, label: "Crossline", shortcut: "" },
   { tool: "channel" as const, icon: Equal, label: "Parallel Channel", shortcut: "" },
   { tool: "hchannel" as const, icon: MoveVertical, label: "Horizontal Channel", shortcut: "" },
   { tool: "fibextension" as const, icon: Layers3, label: "Fib Extension", shortcut: "" },

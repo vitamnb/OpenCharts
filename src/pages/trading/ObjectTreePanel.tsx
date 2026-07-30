@@ -8,6 +8,7 @@ import {
   LockOpen,
   type LucideIcon,
   Minus,
+  Plus,
   Square,
   Trash2,
   TrendingUp,
@@ -22,6 +23,7 @@ const TYPE_META: Record<string, { icon: LucideIcon; label: string }> = {
   fibonacci: { icon: Layers, label: "Fibonacci" },
   rectangle: { icon: Square, label: "Rectangle" },
   position: { icon: TrendingUp, label: "Position" },
+  crossline: { icon: Plus, label: "Crossline" },
 };
 
 export interface ObjectTreePanelProps {

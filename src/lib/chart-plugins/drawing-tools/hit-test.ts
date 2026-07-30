@@ -88,6 +88,8 @@ function hitEntry(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
       return hitFibonacci(e, p, tol);
     case "vertical":
       return hitVertical(e, p, tol);
+    case "crossline":
+      return hitCrossline(e, p, tol);
     case "channel":
       return hitChannel(e, p, tol);
     case "hchannel":
@@ -97,6 +99,13 @@ function hitEntry(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
       return hitBoxShape(e, p, tol);
     case "text":
       return hitText(e, p, tol);
+    case "brush":
+      return hitBrush(e, p, tol);
+    case "measure":
+      // Measure is a transient preview; it never commits to the drawings
+      // array, so it shouldn't appear in a selection hit-test. Return null
+      // defensively in case a future change ever exposes it.
+      return null;
     default:
       return null;
   }
@@ -105,6 +114,16 @@ function hitEntry(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
 function hitVertical(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
   if (e.x1 === null || Math.abs(p.x - e.x1) > tol.line) return null;
   return { id: e.d.id, region: { kind: "point", timeKey: "time", priceKey: null } };
+}
+
+// Crossline: hittable on either the vertical or horizontal line.
+// Body hit moves the whole cross (both time and price together).
+function hitCrossline(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
+  if (e.x1 === null && e.y1 === null) return null;
+  const onVertical = e.x1 !== null && Math.abs(p.x - e.x1) <= tol.line;
+  const onHorizontal = e.y1 !== null && Math.abs(p.y - e.y1) <= tol.line;
+  if (!onVertical && !onHorizontal) return null;
+  return bodyHit(e);
 }
 
 function hitChannel(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
@@ -155,15 +174,18 @@ function hitText(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
   const size = e.d.fontSize ?? 14;
   const text = e.d.text ?? "Text";
   const { w, h } = textDimensions(text, size, e.d.bold, e.d.italic);
-  // The renderer adds 4px padding around the text for bg/border. Use the
-  // larger of the measured width and a minimum so short text is still
-  // grabbable.
   const pad = 4;
-  const left = e.x1 - pad - tol.line;
-  const right = e.x1 + w + pad + tol.line;
-  const top = e.y1 - pad - tol.line;
-  const bottom = e.y1 + h + pad + tol.line;
-  const inside = p.x >= left && p.x <= right && p.y >= top && p.y <= bottom;
+  const left = e.x1 - pad;
+  const right = e.x1 + w + pad;
+  const top = e.y1 - pad;
+  const bottom = e.y1 + h + pad;
+
+  // Only the bottom-right corner is a resize handle; the other corners are
+  // purely visual (part of the selection bounding box).
+  if (dist(p, { x: right, y: bottom }) <= tol.handle) return pointHit(e, null, null);
+
+  // Body hit for moving
+  const inside = p.x >= left - tol.line && p.x <= right + tol.line && p.y >= top - tol.line && p.y <= bottom + tol.line;
   return inside ? bodyHit(e) : null;
 }
 
@@ -267,5 +289,32 @@ function hitFibonacci(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
   const yMin = Math.min(...ys);
   const yMax = Math.max(...ys);
   if (p.y >= yMin && p.y <= yMax) return bodyHit(e);
+  return null;
+}
+
+// Freehand brush: hit if the cursor is within LINE_TOLERANCE of any segment
+// of the polyline, or within HANDLE_TOLERANCE of any point.
+function hitBrush(e: ResolvedEntry, p: Pt, tol: Tol): Hit | null {
+  const pts = e.brushPoints;
+  if (!pts || pts.length === 0) return null;
+
+  // Check distance to each segment of the polyline.
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    if (a.x === null || a.y === null || b.x === null || b.y === null) continue;
+    if (distToSegment(p, { x: a.x, y: a.y }, { x: b.x, y: b.y }) <= tol.line) {
+      return bodyHit(e);
+    }
+  }
+
+  // Single-point brush: check distance to the one point.
+  if (pts.length === 1) {
+    const pt = pts[0]!;
+    if (pt.x !== null && pt.y !== null && dist(p, { x: pt.x, y: pt.y }) < tol.handle) {
+      return bodyHit(e);
+    }
+  }
+
   return null;
 }

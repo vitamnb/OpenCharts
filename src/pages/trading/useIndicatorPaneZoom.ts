@@ -1,10 +1,9 @@
 import { useEffect, useRef, type RefObject } from "react";
-import type { IChartApi } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, SeriesType, Time } from "lightweight-charts";
 import type { IndicatorType } from "../../lib/indicators.ts";
 
 // Map indicator type to its custom overlay price scale ID.
-// These are the IDs used when calling chart.addSeries(..., { priceScaleId: id })
-// and chart.priceScale(id).applyOptions(...).
+// Used to find the first series on the pane with that ID.
 const INDICATOR_PRICE_SCALE_ID: Partial<Record<IndicatorType, string>> = {
   RSI: "rsi",
   MACD: "macd",
@@ -13,7 +12,6 @@ const INDICATOR_PRICE_SCALE_ID: Partial<Record<IndicatorType, string>> = {
 };
 
 // Width of the price scale area on the right edge of the chart (in pixels).
-// The user must press within this zone to start a drag-to-zoom.
 const PRICE_SCALE_WIDTH = 80;
 
 // Clamp scaleMargins to [0, 0.45] so the indicator content never gets
@@ -35,6 +33,10 @@ interface PaneMeta {
  * right edge of an indicator pane and drags up/down, the pane's price scale
  * margins are adjusted to zoom in/out the indicator content.
  *
+ * Key v5 detail: overlay price scales (like 'rsi', 'macd') must be accessed
+ * through `series.priceScale()`, NOT `chart.priceScale(id)`. The chart-level
+ * priceScale() only works for built-in 'right' and 'left' scales.
+ *
  * Pattern mirrors useSlTpDrag: capture-phase mousedown on container,
  * mousemove + mouseup on container and window, re-binds on chartEpoch.
  */
@@ -46,7 +48,7 @@ export function useIndicatorPaneZoom(
 ): void {
   const dragRef = useRef<{
     active: boolean;
-    priceScaleId: string;
+    series: ISeriesApi<SeriesType, Time> | null;
     startY: number;
     startTop: number;
     startBottom: number;
@@ -75,14 +77,11 @@ export function useIndicatorPaneZoom(
       const panes = chart.panes();
       if (panes.length <= 1) return; // no indicator panes
 
-      // Compute pane boundaries. Panes are stacked vertically; each pane has
-      // a height property. The total chart height is the sum of pane heights
-      // plus separators, but pane.height gives the actual pixel height of
-      // each pane.
+      // Compute pane boundaries using getHeight() (lightweight-charts v5 API).
       let yCursor = y;
       let paneIndex = -1;
       for (let i = 0; i < panes.length; i++) {
-        const paneHeight = panes[i].height;
+        const paneHeight = panes[i]?.getHeight() ?? 0;
         if (yCursor <= paneHeight) {
           paneIndex = i;
           break;
@@ -100,17 +99,27 @@ export function useIndicatorPaneZoom(
       const priceScaleId = INDICATOR_PRICE_SCALE_ID[meta.type];
       if (!priceScaleId) return;
 
-      // Read current scaleMargins from the price scale.
-      const priceScale = chart.priceScale(priceScaleId);
+      // In lightweight-charts v5, overlay price scales must be accessed
+      // through the series, not chart.priceScale(). Find the first series
+      // on this pane whose priceScaleId matches.
+      const pane = panes[paneIndex];
+      const seriesList = pane?.getSeries() ?? [];
+      const targetSeries = seriesList.find(
+        (s) => s.options().priceScaleId === priceScaleId,
+      );
+      if (!targetSeries) return;
+
+      // Access the price scale through the series (v5 API).
+      const priceScale = targetSeries.priceScale();
       const options = priceScale.options();
       const startTop = options.scaleMargins?.top ?? 0.1;
       const startBottom = options.scaleMargins?.bottom ?? 0.1;
 
-      const paneHeight = panes[paneIndex].height;
+      const paneHeight = panes[paneIndex]?.getHeight() ?? 100;
 
       dragRef.current = {
         active: true,
-        priceScaleId,
+        series: targetSeries,
         startY: y,
         startTop,
         startBottom,
@@ -131,7 +140,7 @@ export function useIndicatorPaneZoom(
 
     const handleMouseMove = (e: MouseEvent) => {
       const drag = dragRef.current;
-      if (!drag?.active) return;
+      if (!drag?.active || !drag.series) return;
 
       const rect = container.getBoundingClientRect();
       const y = e.clientY - rect.top;
@@ -152,7 +161,8 @@ export function useIndicatorPaneZoom(
         Math.min(MAX_MARGIN, drag.startBottom + deltaFraction),
       );
 
-      chart.priceScale(drag.priceScaleId).applyOptions({
+      // Apply through the series' price scale (v5 overlay API).
+      drag.series.priceScale().applyOptions({
         scaleMargins: { top: newTop, bottom: newBottom },
       });
     };

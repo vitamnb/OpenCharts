@@ -5,7 +5,9 @@ import {
   getParamDescriptors,
   type IndicatorType,
   type IndicatorParams,
+  type IndicatorParamValue,
 } from "../../lib/indicators.ts";
+import { IndicatorControl } from "./IndicatorControl.tsx";
 
 interface Props {
   type: IndicatorType;
@@ -62,45 +64,17 @@ export function IndicatorSettingsDialog({ type, params, onChange, onClose }: Pro
               No adjustable parameters for this indicator.
             </p>
           ) : (
-            descriptors.map((desc) => (
-              <div key={desc.key} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">{desc.label}</label>
-                  <input
-                    type="number"
-                    value={params[desc.key] ?? 0}
-                    min={desc.min}
-                    max={desc.max}
-                    step={desc.step}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!isNaN(val)) {
-                        onChange({ ...params, [desc.key]: val });
-                      }
-                    }}
-                    className="w-20 px-2 py-1 text-sm bg-background border border-border rounded text-right focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <input
-                  type="range"
-                  value={params[desc.key] ?? 0}
-                  min={desc.min}
-                  max={desc.max}
-                  step={desc.step}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    if (!isNaN(val)) {
-                      onChange({ ...params, [desc.key]: val });
-                    }
-                  }}
-                  className="w-full h-1.5 bg-secondary rounded-full appearance-none cursor-pointer accent-primary"
+            descriptors.map((desc) => {
+              const paramVal: IndicatorParamValue = params[desc.key] ?? config.defaultParams[desc.key] ?? 0;
+              return (
+                <IndicatorControl
+                  key={desc.key}
+                  desc={desc}
+                  paramVal={paramVal}
+                  onChange={(key, val) => onChange({ ...params, [key]: val })}
                 />
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>{desc.min}</span>
-                  <span>{desc.max}</span>
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

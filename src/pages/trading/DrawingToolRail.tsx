@@ -1,8 +1,10 @@
 import {
+  Activity,
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
   Circle,
+  Clock,
   Equal,
   Square,
   type LucideIcon,
@@ -13,7 +15,6 @@ import {
   MoveVertical,
   PanelLeft,
   Ruler,
-  Spline,
   TrendingUp,
   TrendingUpDown,
   Triangle,
@@ -23,11 +24,38 @@ import {
   Trash2,
   PenTool,
   Waves,
+  CandlestickChart,
+  Check,
+  ChevronRight,
+  Plus,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SVGProps } from "react";
 import { useDragOffset } from "../../hooks/useDragOffset.ts";
 import { cn } from "../../lib/utils.ts";
-import type { DrawingTool, MagnetMode } from "./constants.ts";
+import type { DrawingTool, MagnetMode, Timeframe } from "./constants.ts";
+import { TIMEFRAMES } from "./constants.ts";
+import { PATTERN_LIST, type PatternMeta } from "./useCandlestickPatterns.ts";
+
+// Custom icon for extended line: straight diagonal line with a dot about a third up
+function ExtendedLineIcon({ size = 24, ...props }: { size?: number } & SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <line x1="4" y1="20" x2="20" y2="4" />
+      <circle cx="9" cy="15" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 interface ToolMeta {
   tool: DrawingTool;
@@ -51,9 +79,10 @@ const GROUPS: ToolGroup[] = [
     tools: [
       { tool: "trendline", icon: TrendingUp, label: "Trend Line" },
       { tool: "ray", icon: MoveUpRight, label: "Ray" },
-      { tool: "extended", icon: Spline, label: "Extended Line" },
+      { tool: "extended", icon: ExtendedLineIcon as LucideIcon, label: "Extended Line" },
       { tool: "horizontal", icon: Minus, label: "Horizontal Line" },
       { tool: "vertical", icon: MoveVertical, label: "Vertical Line" },
+      { tool: "crossline", icon: Plus, label: "Crossline" },
       { tool: "channel", icon: Equal, label: "Parallel Channel" },
       { tool: "hchannel", icon: MoveVertical, label: "Horizontal Channel" },
     ],
@@ -76,6 +105,7 @@ const GROUPS: ToolGroup[] = [
       { tool: "ellipse", icon: Circle, label: "Ellipse" },
       { tool: "triangle", icon: Triangle, label: "Triangle" },
       { tool: "arrow", icon: ArrowRight, label: "Arrow" },
+      { tool: "brush", icon: PenTool, label: "Brush" },
     ],
   },
   {
@@ -83,9 +113,9 @@ const GROUPS: ToolGroup[] = [
     icon: ArrowUpRight,
     label: "Trade",
     tools: [
+      { tool: "measure", icon: Ruler, label: "Measure" },
       { tool: "long-position", icon: ArrowUpRight, label: "Long Position" },
       { tool: "short-position", icon: ArrowDownRight, label: "Short Position" },
-      { tool: "measure", icon: Ruler, label: "Measure" },
     ],
   },
 ];
@@ -166,6 +196,12 @@ export interface DrawingToolRailProps {
   stayInDrawingMode?: boolean;
   onToggleStayInDrawingMode?: () => void;
   onOpenObjectTree?: () => void;
+  onOpenIndicatorPalette?: () => void;
+  timeframe?: Timeframe;
+  onTimeframeChange?: (tf: Timeframe) => void;
+  activePatterns?: string[];
+  onTogglePattern?: (id: string) => void;
+  onClearPatterns?: () => void;
 }
 
 export function DrawingToolRail({
@@ -178,8 +214,15 @@ export function DrawingToolRail({
   stayInDrawingMode = false,
   onToggleStayInDrawingMode,
   onOpenObjectTree,
+  onOpenIndicatorPalette,
+  timeframe,
+  onTimeframeChange,
+  activePatterns = [],
+  onTogglePattern,
+  onClearPatterns,
 }: DrawingToolRailProps) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [openSubGroup, setOpenSubGroup] = useState<string | null>(null);
   const [docked, setDocked] = useState(() => localStorage.getItem("drawingRailDocked") === "true");
   const ref = useRef<HTMLDivElement>(null);
   const drag = useDragOffset();
@@ -190,9 +233,15 @@ export function DrawingToolRail({
   }, [docked]);
 
   useEffect(() => {
-    if (!openGroup) return;
+    if (!openGroup) {
+      setOpenSubGroup(null);
+      return;
+    }
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpenGroup(null);
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpenGroup(null);
+        setOpenSubGroup(null);
+      }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -232,6 +281,115 @@ export function DrawingToolRail({
         active={drawingTool === "text"}
         onClick={() => select("text")}
       />
+      {/* Indicators button */}
+      {onOpenIndicatorPalette && (
+        <RailButton
+          icon={Activity}
+          title="Indicators"
+          onClick={onOpenIndicatorPalette}
+        />
+      )}
+      {/* Candlestick patterns two-tier flyout */}
+      {onTogglePattern && (
+        <div className="relative">
+          <RailButton
+            icon={CandlestickChart}
+            title="Candlestick Patterns"
+            active={openGroup === "patterns" || activePatterns.length > 0}
+            onClick={() => setOpenGroup((o) => (o === "patterns" ? null : "patterns"))}
+          />
+          {openGroup === "patterns" && (
+            <div className="absolute left-full top-0 ml-1 z-30 min-w-[180px] rounded-md bg-card border border-border shadow-xl py-1">
+              {activePatterns.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onClearPatterns?.()}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-secondary text-left text-muted-foreground border-b border-border/50 mb-1"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Clear all ({activePatterns.length})
+                </button>
+              )}
+              {(["bullish", "bearish", "neutral"] as const).map((sentiment) => {
+                const patterns = PATTERN_LIST.filter((p) => p.sentiment === sentiment);
+                if (patterns.length === 0) return null;
+                const colorClass = sentiment === "bullish" ? "text-emerald-500" : sentiment === "bearish" ? "text-red-500" : "text-yellow-500";
+                const activeInGroup = patterns.filter((p) => activePatterns.includes(p.id)).length;
+                return (
+                  <div key={sentiment} className="relative group/sub">
+                    <button
+                      type="button"
+                      onClick={() => setOpenSubGroup((o) => (o === sentiment ? null : sentiment))}
+                      className={cn(
+                        "w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-secondary text-left",
+                        openSubGroup === sentiment && "bg-secondary",
+                      )}
+                    >
+                      <span className={cn("flex items-center gap-2", colorClass)}>
+                        <span className="capitalize font-medium">{sentiment}</span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        {activeInGroup > 0 && (
+                          <span className="text-xs text-muted-foreground">{activeInGroup}</span>
+                        )}
+                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                      </span>
+                    </button>
+                    {openSubGroup === sentiment && (
+                      <div className="absolute left-full top-0 ml-1 z-40 min-w-[200px] rounded-md bg-card border border-border shadow-xl py-1 max-h-[400px] overflow-y-auto">
+                        {patterns.map((p: PatternMeta) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => onTogglePattern(p.id)}
+                            className={cn(
+                              "w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-secondary text-left",
+                              activePatterns.includes(p.id) && "bg-secondary",
+                            )}
+                          >
+                            <span className={cn("h-3.5 w-3.5 shrink-0 flex items-center justify-center", activePatterns.includes(p.id) ? colorClass : "text-transparent")}>
+                              <Check className="h-3 w-3" />
+                            </span>
+                            <span className="truncate">{p.title}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Timeframe flyout */}
+      {timeframe && onTimeframeChange && (
+        <div className="relative">
+          <RailButton
+            icon={Clock}
+            title="Timeframe"
+            active={openGroup === "tf"}
+            onClick={() => setOpenGroup((o) => (o === "tf" ? null : "tf"))}
+          />
+          {openGroup === "tf" && (
+            <div className="absolute left-full top-0 ml-1 z-30 min-w-[80px] rounded-md bg-card border border-border shadow-xl py-1">
+              {TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  onClick={() => { onTimeframeChange(tf); setOpenGroup(null); }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-secondary text-left",
+                    timeframe === tf && "bg-secondary text-primary",
+                  )}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 

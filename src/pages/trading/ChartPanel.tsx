@@ -64,12 +64,15 @@ import {
   DrawingSettingsDialog,
 } from "./DrawingToolsOverlay.tsx";
 import { DrawingToolRail } from "./DrawingToolRail.tsx";
+import { useCandlestickPatterns } from "./useCandlestickPatterns.ts";
 import { DRAWING_STYLES_EVENT, getStyleDefaults } from "./drawingStyles.ts";
 import { ObjectTreePanel } from "./ObjectTreePanel.tsx";
 import { useChallengeLevels } from "./useChallengeLevels.ts";
 import { useIndicators } from "./useIndicators.ts";
 import { useIndicatorPaneZoom } from "./useIndicatorPaneZoom.ts";
+import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
 import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
+import { IndicatorCommandPalette } from "./IndicatorCommandPalette.tsx";
 import { IndicatorChips } from "./IndicatorChips.tsx";
 // import { useNewsOverlay } from "./useNewsOverlay.ts";
 import { useSlTpDrag } from "./useSlTpDrag.ts";
@@ -143,9 +146,9 @@ function fetchOlderRange(
   onLoaded: (bars: Candle[]) => void,
 ): void {
   const windowMs = LOAD_MORE_WINDOW * (TF_INTERVAL_MS[timeframe as Timeframe] ?? 60_000);
-  api
+  (api as any)
     .getCandles(symbol, timeframe, undefined, { fromMs: toMs - windowMs, toMs })
-    .then((bars) => {
+    .then((bars: Candle[]) => {
       if (bars.length === 0) {
         // Empty window — could be a gap (e.g. Forex weekend) rather than true
         // end of history. Shift the fetch boundary back one more window so the
@@ -203,6 +206,7 @@ export interface ChartPanelProps {
   candles: Candle[];
   selectedSymbol: string;
   timeframe: Timeframe;
+  onTimeframeChange?: (tf: Timeframe) => void;
   isDark: boolean;
   activeIndicators: IndicatorType[];
   hiddenIndicators?: IndicatorType[];
@@ -1082,6 +1086,7 @@ export function ChartPanel({
   candles,
   selectedSymbol,
   timeframe,
+  onTimeframeChange,
   isDark,
   activeIndicators,
   hiddenIndicators = [],
@@ -1193,6 +1198,8 @@ export function ChartPanel({
   const [selectedDrawingIds, setSelectedDrawingIds] = useState<string[]>([]);
   const [showDrawingSettings, setShowDrawingSettings] = useState(false);
   const [showObjectTree, setShowObjectTree] = useState(false);
+  const [showIndicatorPalette, setShowIndicatorPalette] = useState(false);
+  const [activePatterns, setActivePatterns] = useState<string[]>([]);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   // ── Chart-wide context menu + settings dialog ──
@@ -1402,7 +1409,10 @@ export function ChartPanel({
     [onAddDrawing, pipDigits, timeframe, selectedSymbol],
   );
 
-  const { paneMeta } = useIndicators(chartRef, candleSeriesRef, chartData, activeIndicators, isDark, indicatorParams, indicatorAppearance, hiddenIndicators);
+  const { paneMeta } = useIndicators(chartRef, candleSeriesRef, chartData, activeIndicators, isDark, indicatorParams, indicatorAppearance, hiddenIndicators, volumeData);
+
+  // Candlestick pattern markers on the main chart
+  useCandlestickPatterns(chartRef, candleSeriesRef, chartData, activePatterns, volumeData);
 
   // ── Indicator pane price scale drag-to-zoom ──
   // lightweight-charts v5 doesn't support drag-to-zoom on custom overlay price
@@ -1462,7 +1472,10 @@ export function ChartPanel({
         fontSize: 11,
         attributionLogo: false,
         panes: {
-          enableResize: true,
+          // Native separator drag disabled — we provide our own visible drag
+          // handle (PaneResizeHandle via usePaneResize) that's wider and
+          // more discoverable, and lets us enforce min heights.
+          enableResize: false,
           separatorColor: isDark ? "#2A2E39" : "#D1D4DC",
           separatorHoverColor: isDark
             ? "rgba(180, 200, 240, 0.15)"
@@ -2114,6 +2127,16 @@ export function ChartPanel({
         onContextMenu={handleChartContextMenu}
       />
 
+      {/* Pane-resize handles: one between each pair of chart panes (indicator
+          boundary). Sits on top of the chart at z-5, but below the legend
+          header (z-10) and tooltips (z-20). Hidden until there's more than
+          one pane (i.e. an indicator is active). */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="relative w-full h-full pointer-events-auto">
+          <PaneResizeOverlay chartRef={chartRef} isDark={isDark} chartEpoch={chartEpoch} />
+        </div>
+      </div>
+
       {/* Left vertical tool rail (TradingView-style grouped flyouts) */}
       <DrawingToolRail
         drawingTool={drawingTool}
@@ -2125,6 +2148,22 @@ export function ChartPanel({
         stayInDrawingMode={stayInDrawingMode}
         onToggleStayInDrawingMode={onToggleStayInDrawingMode}
         onOpenObjectTree={() => setShowObjectTree((v) => !v)}
+        onOpenIndicatorPalette={() => setShowIndicatorPalette(true)}
+        timeframe={timeframe}
+        onTimeframeChange={onTimeframeChange}
+        activePatterns={activePatterns}
+        onTogglePattern={(id) => setActivePatterns((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id])}
+        onClearPatterns={() => setActivePatterns([])}
+      />
+
+      <IndicatorCommandPalette
+        open={showIndicatorPalette}
+        onClose={() => setShowIndicatorPalette(false)}
+        onSelect={(type) => {
+          onToggleIndicator?.(type);
+          setShowIndicatorPalette(false);
+        }}
+        activeIndicators={activeIndicators}
       />
     </div>
   );

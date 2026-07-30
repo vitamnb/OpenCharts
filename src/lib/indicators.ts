@@ -259,16 +259,41 @@ export function vwap(candles: CandleData[]): IndicatorPoint[] {
 }
 
 // ── Indicator Registry (for UI) ──────────────────────────────
-export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP";
+export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV";
+
+// Map our indicator types to the lightweight-charts-indicators library export names
+export const LIB_KEY: Partial<Record<IndicatorType, string>> = {
+  RSI: "RSI",
+  MACD: "MACD",
+  BOLL: "BollingerBands",
+  ATR: "ATR",
+  STOCH: "Stochastic",
+  SMA: "SMA",
+  EMA: "EMA",
+  VWAP: "VWAP",
+  SUPERTREND: "Supertrend",
+  OBV: "OBV",
+};
 
 export type IndicatorPane = "overlay" | "below";
+
+export type IndicatorCategory =
+  | "Moving Averages"
+  | "Oscillators"
+  | "Volatility"
+  | "Volume"
+  | "Trend";
 
 export interface IndicatorConfig {
   type: IndicatorType;
   label: string;
+  shortLabel: string;
   pane: IndicatorPane;
-  defaultParams: Record<string, number>;
+  category: IndicatorCategory;
+  defaultParams: IndicatorParams;
   color: string;
+  // Whether this indicator uses the library adapter (vs hand-rolled math)
+  useLib?: boolean;
 }
 
 // Per-indicator parameter values (key = param name, value = number)
@@ -280,7 +305,9 @@ export interface IndicatorAppearance {
   visible: boolean;
 }
 
-export type IndicatorParams = Record<string, number>;
+// Params can now be number, string (source/select), or boolean
+export type IndicatorParamValue = number | string | boolean;
+export type IndicatorParams = Record<string, IndicatorParamValue>;
 
 // Get the default params for an indicator type as a flat object
 export function getDefaultParams(type: IndicatorType): IndicatorParams {
@@ -295,28 +322,75 @@ export interface ParamDescriptor {
   min: number;
   max: number;
   step: number;
+  // For non-numeric params (select, source, bool)
+  controlType?: "number" | "select" | "source" | "bool";
+  options?: string[]; // for select
 }
 
 export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
   const descriptors: Record<IndicatorType, ParamDescriptor[]> = {
-    SMA: [{ key: "period", label: "Period", min: 1, max: 200, step: 1 }],
-    EMA: [{ key: "period", label: "Period", min: 1, max: 200, step: 1 }],
-    RSI: [{ key: "period", label: "Period", min: 2, max: 50, step: 1 }],
+    SMA: [
+      { key: "len", label: "Length", min: 1, max: 500, step: 1 },
+      { key: "src", label: "Source", min: 0, max: 0, step: 0, controlType: "source", options: ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4"] },
+      { key: "offset", label: "Offset", min: -500, max: 500, step: 1 },
+      { key: "maType", label: "Smoothing Type", min: 0, max: 0, step: 0, controlType: "select", options: ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"] },
+      { key: "maLength", label: "Smoothing Length", min: 1, max: 200, step: 1 },
+      { key: "bbMult", label: "BB StdDev", min: 0.001, max: 50, step: 0.1 },
+    ],
+    EMA: [
+      { key: "length", label: "Length", min: 1, max: 500, step: 1 },
+      { key: "src", label: "Source", min: 0, max: 0, step: 0, controlType: "source", options: ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4"] },
+      { key: "offset", label: "Offset", min: -500, max: 500, step: 1 },
+      { key: "maType", label: "Smoothing Type", min: 0, max: 0, step: 0, controlType: "select", options: ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"] },
+      { key: "maLength", label: "Smoothing Length", min: 1, max: 200, step: 1 },
+      { key: "bbMult", label: "BB StdDev", min: 0.001, max: 50, step: 0.1 },
+    ],
+    RSI: [
+      { key: "length", label: "Length", min: 2, max: 50, step: 1 },
+      { key: "upper", label: "Upper Level", min: 50, max: 100, step: 1 },
+      { key: "lower", label: "Lower Level", min: 0, max: 50, step: 1 },
+      { key: "src", label: "Source", min: 0, max: 0, step: 0, controlType: "source", options: ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4"] },
+      { key: "maType", label: "Smoothing Type", min: 0, max: 0, step: 0, controlType: "select", options: ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"] },
+      { key: "maLength", label: "Smoothing Length", min: 1, max: 200, step: 1 },
+      { key: "bbMult", label: "BB StdDev", min: 0.001, max: 50, step: 0.1 },
+    ],
     MACD: [
-      { key: "fast", label: "Fast EMA", min: 2, max: 50, step: 1 },
-      { key: "slow", label: "Slow EMA", min: 2, max: 100, step: 1 },
-      { key: "signal", label: "Signal EMA", min: 1, max: 50, step: 1 },
+      { key: "fastLength", label: "Fast Length", min: 1, max: 200, step: 1 },
+      { key: "slowLength", label: "Slow Length", min: 1, max: 200, step: 1 },
+      { key: "signalLength", label: "Signal Smoothing", min: 1, max: 200, step: 1 },
+      { key: "src", label: "Source", min: 0, max: 0, step: 0, controlType: "source", options: ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4"] },
     ],
     BOLL: [
-      { key: "period", label: "Period", min: 5, max: 100, step: 1 },
-      { key: "stdDev", label: "Std Dev", min: 0.5, max: 5, step: 0.1 },
+      { key: "length", label: "Length", min: 1, max: 500, step: 1 },
+      { key: "maType", label: "Basis MA Type", min: 0, max: 0, step: 0, controlType: "select", options: ["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"] },
+      { key: "src", label: "Source", min: 0, max: 0, step: 0, controlType: "source", options: ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4"] },
+      { key: "mult", label: "StdDev", min: 0.001, max: 50, step: 0.1 },
+      { key: "offset", label: "Offset", min: -500, max: 500, step: 1 },
     ],
-    ATR: [{ key: "period", label: "Period", min: 1, max: 100, step: 1 }],
+    ATR: [
+      { key: "length", label: "Length", min: 1, max: 200, step: 1 },
+      { key: "smoothing", label: "Smoothing", min: 0, max: 0, step: 0, controlType: "select", options: ["RMA", "SMA", "EMA", "WMA"] },
+    ],
     STOCH: [
-      { key: "kPeriod", label: "%K Period", min: 1, max: 50, step: 1 },
-      { key: "dPeriod", label: "%D Period", min: 1, max: 20, step: 1 },
+      { key: "periodK", label: "%K Length", min: 1, max: 200, step: 1 },
+      { key: "smoothK", label: "%K Smoothing", min: 1, max: 200, step: 1 },
+      { key: "periodD", label: "%D Smoothing", min: 1, max: 200, step: 1 },
     ],
-    VWAP: [],
+    VWAP: [
+      { key: "anchor", label: "Anchor Period", min: 0, max: 0, step: 0, controlType: "select", options: ["1D", "1W", "1M"] },
+      { key: "src", label: "Source", min: 0, max: 0, step: 0, controlType: "source", options: ["open", "high", "low", "close", "hl2", "hlc3", "ohlc4"] },
+      { key: "showBands", label: "Show Bands", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "bandMult", label: "Band Multiplier", min: 0.1, max: 50, step: 0.1 },
+    ],
+    SUPERTREND: [
+      { key: "atrPeriod", label: "ATR Length", min: 1, max: 200, step: 1 },
+      { key: "factor", label: "Factor", min: 0.01, max: 100, step: 0.01 },
+    ],
+    OBV: [
+      { key: "maType", label: "Smoothing Type", min: 0, max: 0, step: 0, controlType: "select", options: ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"] },
+      { key: "maLength", label: "Smoothing Length", min: 1, max: 200, step: 1 },
+      { key: "bbMult", label: "BB StdDev", min: 0.001, max: 50, step: 0.1 },
+    ],
   };
   return descriptors[type] ?? [];
 }
@@ -335,57 +409,101 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
   {
     type: "SMA",
     label: "Simple Moving Average",
+    shortLabel: "SMA",
     pane: "overlay",
-    defaultParams: { period: 20 },
+    category: "Moving Averages",
+    defaultParams: { len: 9, src: "close", offset: 0, maType: "None", maLength: 14, bbMult: 2 },
     color: "#f0b90b",
+    useLib: true,
   },
   {
     type: "EMA",
     label: "Exponential Moving Average",
+    shortLabel: "EMA",
     pane: "overlay",
-    defaultParams: { period: 20 },
+    category: "Moving Averages",
+    defaultParams: { length: 9, src: "close", offset: 0, maType: "None", maLength: 14, bbMult: 2 },
     color: "#e377c2",
+    useLib: true,
   },
   {
     type: "RSI",
     label: "Relative Strength Index",
+    shortLabel: "RSI",
     pane: "below",
-    defaultParams: { period: 14 },
+    category: "Oscillators",
+    defaultParams: { length: 14, upper: 70, lower: 30, src: "close", maType: "None", maLength: 14, bbMult: 2 },
     color: "#8884d8",
+    useLib: true,
   },
   {
     type: "MACD",
     label: "MACD",
+    shortLabel: "MACD",
     pane: "below",
-    defaultParams: { fast: 12, slow: 26, signal: 9 },
+    category: "Oscillators",
+    defaultParams: { fastLength: 12, slowLength: 26, signalLength: 9, src: "close" },
     color: "#2196f3",
+    useLib: true,
   },
   {
     type: "BOLL",
     label: "Bollinger Bands",
+    shortLabel: "BB",
     pane: "overlay",
-    defaultParams: { period: 20, stdDev: 2 },
+    category: "Volatility",
+    defaultParams: { length: 20, maType: "SMA", src: "close", mult: 2, offset: 0 },
     color: "#26a69a",
+    useLib: true,
   },
   {
     type: "ATR",
     label: "Average True Range",
+    shortLabel: "ATR",
     pane: "below",
-    defaultParams: { period: 14 },
+    category: "Volatility",
+    defaultParams: { length: 14, smoothing: "RMA" },
     color: "#ff7043",
+    useLib: true,
   },
   {
     type: "STOCH",
     label: "Stochastic Oscillator",
+    shortLabel: "Stoch",
     pane: "below",
-    defaultParams: { kPeriod: 14, dPeriod: 3 },
+    category: "Oscillators",
+    defaultParams: { periodK: 14, smoothK: 1, periodD: 3 },
     color: "#ab47bc",
+    useLib: true,
   },
   {
     type: "VWAP",
     label: "Volume Weighted Avg Price",
+    shortLabel: "VWAP",
     pane: "overlay",
-    defaultParams: {},
+    category: "Volume",
+    defaultParams: { anchor: "1D", src: "hlc3", showBands: false, bandMult: 1 },
     color: "#42a5f5",
+    useLib: true,
+  },
+  {
+    type: "SUPERTREND",
+    label: "Supertrend",
+    shortLabel: "ST",
+    pane: "overlay",
+    category: "Trend",
+    defaultParams: { atrPeriod: 10, factor: 3 },
+    color: "#26a69a",
+    useLib: true,
+  },
+  {
+    type: "OBV",
+    label: "On Balance Volume",
+    shortLabel: "OBV",
+    pane: "below",
+    category: "Volume",
+    defaultParams: { maType: "None", maLength: 14, bbMult: 2 },
+    color: "#9c27b0",
+    useLib: true,
   },
 ];

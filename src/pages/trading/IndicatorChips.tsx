@@ -63,7 +63,7 @@ export function IndicatorChips({
                 e.stopPropagation();
                 onSettings(type);
               }}
-              className="ml-1 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-secondary text-muted-foreground hover:text-foreground transition-opacity"
+              className="ml-auto p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-secondary text-muted-foreground hover:text-foreground transition-opacity"
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
             </span>
@@ -88,7 +88,7 @@ export function IndicatorChips({
               }}
               className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-secondary text-muted-foreground hover:text-foreground transition-opacity"
             >
-              <X className="h-2.5 w-2.5" />
+              <X className="h-3.5 w-3.5" />
             </span>
           </div>
         );

@@ -99,6 +99,10 @@ interface DragState {
   group: GroupMember[];
   moved: boolean;
   isTouch: boolean;
+  /** Text resize: pixel distance from anchor to cursor at drag start. */
+  initialDist?: number;
+  /** Text resize: font size at drag start. */
+  initialFontSize?: number;
 }
 
 interface PlacingState {
@@ -155,6 +159,8 @@ export class DrawingToolsManager {
   // The measure tool is a throwaway gesture: its result lingers as a preview
   // (never committed/persisted) until the next pointer-down or Escape.
   private measureResult: DrawingLine | null = null;
+  // Freehand brush: points captured during a press-drag-release gesture.
+  private brushPoints: DataPoint[] | null = null;
   // Copy/paste clipboard (deep copies of the drawings copied with Ctrl/Cmd+C).
   private clipboard: DrawingLine[] = [];
   // Per-type style defaults new drawings inherit (set via the settings dialog).
@@ -269,12 +275,20 @@ export class DrawingToolsManager {
   /** Pointer position relative to the chart pane, or null when outside it. */
   private posFromClient(clientX: number, clientY: number): Pt | null {
     const rect = this.container.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    // The container may have padding (e.g. when the drawing rail is docked),
+    // so the chart canvas starts inside the border box. Subtract padding to
+    // get coordinates relative to the chart canvas, which is what
+    // timeToX / priceToCoordinate return.
+    const padLeft = parseFloat(getComputedStyle(this.container).paddingLeft) || 0;
+    const padTop = parseFloat(getComputedStyle(this.container).paddingTop) || 0;
+    const x = clientX - rect.left - padLeft;
+    const y = clientY - rect.top - padTop;
     const timeScale = this.chart.timeScale();
     const paneWidth = timeScale.width();
     const paneHeight = rect.height - timeScale.height();
-    if (paneWidth <= 0 || x < 0 || y < 0 || x > paneWidth || y > paneHeight) return null;
+    // Small tolerance so hit-testing works at pane edges and separators.
+    const tol = 8;
+    if (paneWidth <= 0 || x < -tol || y < -tol || x > paneWidth + tol || y > paneHeight + tol) return null;
     return { x, y };
   }
 
@@ -314,12 +328,13 @@ export class DrawingToolsManager {
     };
     if (tool === "horizontal") return { ...base, type: "horizontal", price: p1.price };
     if (tool === "vertical") return { ...base, type: "vertical", price: p1.price, time: p1.time };
+    if (tool === "crossline") return { ...base, type: "crossline", price: p1.price, time: p1.time };
     const two = { ...base, price: p1.price, time: p1.time, price2: p2.price, time2: p2.time };
     if (tool === "ray") return { ...two, type: "trendline", extendRight: true };
     if (tool === "extended")
       return { ...two, type: "trendline", extendLeft: true, extendRight: true };
     if (tool === "measure")
-      return { ...two, type: "trendline", color: "#b2b5be", lineStyle: "dashed" };
+      return { ...two, type: "measure", color: "#b2b5be", lineStyle: "dashed" };
     if (tool === "channel") {
       // Offset line defaults parallel and mirrored below so it's visible/draggable.
       return { ...two, type: "channel", time3: p1.time, price3: 2 * p1.price - p2.price };
@@ -381,7 +396,11 @@ export class DrawingToolsManager {
       this.placingMove(pos, e.shiftKey);
       return;
     }
-    if (this.tool === "none") this.hoverHit(hitTest(this.resolveAll(), pos));
+    if (this.tool === "none") {
+      const entries = this.resolveAll();
+      const hit = hitTest(entries, pos);
+      this.hoverHit(hit);
+    }
   };
 
   private handleMouseUp = (e: MouseEvent): void => {
@@ -623,8 +642,14 @@ export class DrawingToolsManager {
     // Take the event over so the chart doesn't pan while drawing.
     e.preventDefault();
     e.stopPropagation();
-    if (this.tool === "horizontal" || this.tool === "vertical" || this.tool === "text") {
+    if (this.tool === "horizontal" || this.tool === "vertical" || this.tool === "text" || this.tool === "crossline") {
       this.commitDrawing(this.makeNew(this.tool, pt, pt));
+      return;
+    }
+    if (this.tool === "brush") {
+      this.brushPoints = [pt];
+      this.placing = { p1: pt, startX: pos.x, startY: pos.y };
+      this.primitive.setPreview(this.makeBrushPreview(this.brushPoints));
       return;
     }
     if (this.placing) {
@@ -648,7 +673,7 @@ export class DrawingToolsManager {
     this.placing = null;
     this.measureResult = {
       id: "measure",
-      type: "trendline",
+      type: "measure",
       color: "#b2b5be",
       lineStyle: "dashed",
       price: p1.price,
@@ -671,12 +696,26 @@ export class DrawingToolsManager {
   private placingMove(pos: Pt, shiftKey: boolean): void {
     const pt = this.pointFor(pos, shiftKey, this.placementAnchorPx());
     if (!pt || !this.placing) return;
+    if (this.tool === "brush" && this.brushPoints) {
+      // Throttle: only add a point if it moved far enough from the last one.
+      const last = this.brushPoints[this.brushPoints.length - 1]!;
+      const dx = pt.time - last.time;
+      const dp = pt.price - last.price;
+      if (Math.abs(dx) < 1 && Math.abs(dp) < 0.0001) return;
+      this.brushPoints.push(pt);
+      this.primitive.setPreview(this.makeBrushPreview(this.brushPoints));
+      return;
+    }
     this.primitive.setPreview(this.makeNew(this.tool, this.placing.p1, pt));
   }
 
   private maybeCommitPlacement(pos: Pt | null, shiftKey: boolean): void {
     const placing = this.placing!;
     if (!pos || dist(pos, { x: placing.startX, y: placing.startY }) < DRAG_COMMIT_THRESHOLD_PX) {
+      return;
+    }
+    if (this.tool === "brush" && this.brushPoints) {
+      this.commitBrush();
       return;
     }
     const pt = this.pointFor(pos, shiftKey, this.placementAnchorPx());
@@ -698,7 +737,53 @@ export class DrawingToolsManager {
 
   private cancelPlacement(): void {
     this.placing = null;
+    this.brushPoints = null;
     this.primitive.setPreview(null);
+  }
+
+  private commitBrush(): void {
+    const pts = this.brushPoints;
+    this.brushPoints = null;
+    this.placing = null;
+    if (!pts || pts.length < 2) {
+      this.primitive.setPreview(null);
+      return;
+    }
+    const d: DrawingLine = {
+      id: crypto.randomUUID(),
+      type: "brush",
+      price: pts[0]!.price,
+      time: pts[0]!.time,
+      price2: pts[pts.length - 1]!.price,
+      time2: pts[pts.length - 1]!.time,
+      color: this.styleDefaults.brush?.color ?? "#2196F3",
+      width: this.styleDefaults.brush?.width ?? 2,
+      points: pts,
+      createdTf: this.timeframe,
+    };
+    this.primitive.setPreview(null);
+    this.drawings = [...this.drawings, d];
+    this.primitive.setDrawings(this.drawings);
+    this.cb.onAdd({ ...d });
+    if (this.stayInMode && this.tool !== "none") return;
+    this.select([d.id]);
+    this.tool = "none";
+    this.container.style.cursor = "";
+    this.cb.onToolFinished();
+  }
+
+  private makeBrushPreview(pts: DataPoint[]): DrawingLine {
+    return {
+      id: "brush-preview",
+      type: "brush",
+      price: pts[0]!.price,
+      time: pts[0]!.time,
+      price2: pts[pts.length - 1]!.price,
+      time2: pts[pts.length - 1]!.time,
+      color: this.styleDefaults.brush?.color ?? "#2196F3",
+      width: this.styleDefaults.brush?.width ?? 2,
+      points: pts,
+    };
   }
 
   // ── Selection & dragging ───────────────────────────────────────────
@@ -706,7 +791,6 @@ export class DrawingToolsManager {
   private selectionStart(pos: Pt, e: TakeoverEvt, isTouch: boolean): Hit | null {
     const entries = this.resolveAll();
     const hit = hitTest(entries, pos, isTouch ? TOUCH_HIT_SCALE : 1);
-    console.log('[DEBUG selectionStart] pos=', pos, 'hit=', hit ? JSON.stringify(hit) : 'null', 'entries=', entries.length);
     if (!hit) {
       if (!e.shiftKey) this.select([]);
       return null;
@@ -719,7 +803,6 @@ export class DrawingToolsManager {
     }
     if (!this.selectedIds.includes(hit.id)) this.select([hit.id]);
     this.beginDrag(hit, pos, entries, isTouch);
-    console.log('[DEBUG selectionStart] after beginDrag, this.drag=', this.drag ? 'SET' : 'NULL');
     return hit;
   }
 
@@ -733,7 +816,6 @@ export class DrawingToolsManager {
   private beginDrag(hit: Hit, pos: Pt, entries: ResolvedEntry[], isTouch: boolean): void {
     const origin = this.drawings.find((d) => d.id === hit.id);
     const originEntry = entries.find((en) => en.d.id === hit.id);
-    console.log('[DEBUG beginDrag] origin=', origin ? origin.id : 'null', 'originEntry=', originEntry ? 'found' : 'null', 'locked=', origin?.locked);
     // Locked drawings are selectable (so they can be unlocked) but never drag.
     if (!origin || !originEntry || origin.locked) return;
     const group = hit.region.kind === "body" ? this.groupFor(hit.id, entries) : [];
@@ -746,9 +828,22 @@ export class DrawingToolsManager {
       group,
       moved: false,
       isTouch,
+      initialDist: originEntry.x1 !== null && originEntry.y1 !== null
+        ? Math.max(10, Math.hypot(pos.x - originEntry.x1, pos.y - originEntry.y1))
+        : undefined,
+      initialFontSize: origin.fontSize ?? 14,
     };
-    console.log('[DEBUG beginDrag] drag SET, hit.region=', JSON.stringify(hit.region));
     this.applyCursor("grabbing");
+    // Disable chart scrolling during drag (same pattern as useSlTpDrag and
+    // useIndicatorPaneZoom) so the chart doesn't pan underneath a drawing drag.
+    this.chart.applyOptions({
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+    });
   }
 
   /** Other selected, unlocked drawings that ride along on a body drag. */
@@ -767,7 +862,6 @@ export class DrawingToolsManager {
   private dragMove(pos: Pt, shiftKey: boolean): void {
     const drag = this.drag!;
     const updates = this.computeDragUpdates(drag, pos, shiftKey);
-    console.log('[DEBUG dragMove] pos=', pos, 'updates=', updates.length, 'region=', JSON.stringify(drag.hit.region));
     if (updates.length === 0) return;
     drag.moved = true;
     const byId = new Map(updates.map((u) => [u.id, u]));
@@ -796,7 +890,6 @@ export class DrawingToolsManager {
   private dragPoint(drag: DragState, pos: Pt, shiftKey: boolean): DrawingLine | null {
     if (drag.hit.region.kind !== "point") return null;
     const pt = this.pointFor(pos, shiftKey, this.dragAnchorPx(drag));
-    console.log('[DEBUG dragPoint] pt=', pt ? JSON.stringify(pt) : 'null', 'timeKey=', drag.hit.region.timeKey, 'priceKey=', drag.hit.region.priceKey);
     if (!pt) return null;
     const updated: DrawingLine = { ...drag.origin };
     const { timeKey, priceKey } = drag.hit.region;
@@ -821,6 +914,16 @@ export class DrawingToolsManager {
       }
     }
 
+    // Text tool: bottom-right corner drag resizes font size
+    if (drag.origin.type === "text" && timeKey === null && priceKey === null && drag.originEntry) {
+      const anchorX = drag.originEntry.x1;
+      const anchorY = drag.originEntry.y1;
+      if (anchorX !== null && anchorY !== null && drag.initialDist != null && drag.initialFontSize != null) {
+        const curDist = Math.max(10, Math.hypot(pos.x - anchorX, pos.y - anchorY));
+        updated.fontSize = Math.round(Math.max(6, Math.min(72, drag.initialFontSize * curDist / drag.initialDist)));
+      }
+    }
+
     return updated;
   }
 
@@ -840,12 +943,29 @@ export class DrawingToolsManager {
       const p = this.shiftPoint(entry.x1, entry.y1, dx, 0);
       return p ? { ...origin, time: p.time } : null;
     }
+    if (origin.type === "crossline") {
+      const p = this.shiftPoint(entry.x1, entry.y1, dx, dy);
+      return p ? { ...origin, time: p.time, price: p.price } : null;
+    }
     if (origin.type === "position") return this.shiftPosition(origin, entry, dx, dy);
     if (origin.type === "channel" || origin.type === "hchannel") return this.shiftChannel(origin, entry, dx, dy);
     if (origin.type === "text") {
       // Text has a single anchor (x1,y1) — move it by the pixel delta
       const p = this.shiftPoint(entry.x1, entry.y1, dx, dy);
       return p ? { ...origin, time: p.time, price: p.price } : null;
+    }
+    if (origin.type === "brush" && origin.points) {
+      // Move all polyline points by the pixel delta
+      const shiftedPoints = origin.points.map((pt) => {
+        const px = timeToX(this.ctx(), pt.time);
+        const py = this.series.priceToCoordinate(pt.price);
+        if (px === null || py === null) return pt;
+        const np = this.shiftPoint(px, py, dx, dy);
+        return np ?? pt;
+      });
+      const p1 = this.shiftPoint(entry.x1, entry.y1, dx, dy);
+      const p2 = this.shiftPoint(entry.x2, entry.y2, dx, dy);
+      return { ...origin, time: p1?.time ?? origin.time, price: p1?.price ?? origin.price, time2: p2?.time ?? origin.time2, price2: p2?.price ?? origin.price2, points: shiftedPoints };
     }
     const p1 = this.shiftPoint(entry.x1, entry.y1, dx, dy);
     const p2 = this.shiftPoint(entry.x2, entry.y2, dx, dy);
@@ -905,6 +1025,15 @@ export class DrawingToolsManager {
     const drag = this.drag!;
     this.drag = null;
     this.applyCursor(null);
+    // Restore chart scrolling after drag ends.
+    this.chart.applyOptions({
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+    });
     if (!drag.moved) return;
     const ids = [drag.hit.id, ...drag.group.map((g) => g.origin.id)];
     for (const id of ids) {
@@ -1033,7 +1162,7 @@ export class DrawingToolsManager {
       this.primitive.setHovered(id);
     }
     if (hit?.region.kind === "point") {
-      this.applyCursor("resize" as any);
+      this.applyCursor(this.resizeCursorFor(hit));
     } else if (hit) {
       this.applyCursor("pointer");
     } else {
@@ -1041,9 +1170,49 @@ export class DrawingToolsManager {
     }
   }
 
-  private applyCursor(interactionCursor: "pointer" | "grabbing" | "resize" | null): void {
-    if (interactionCursor === "resize") {
-      this.container.style.cursor = "nwse-resize";
+  /**
+   * Pick a directional resize cursor based on which anchor the hit landed on.
+   * Corner handles get a diagonal cursor, single-axis handles get the
+   * matching horizontal/vertical cursor.
+   */
+  private resizeCursorFor(hit: Hit): string {
+    if (hit.region.kind !== "point") return "nwse-resize";
+    const { timeKey, priceKey } = hit.region;
+    const hasTime = timeKey !== null;
+    const hasPrice = priceKey !== null;
+    // Single-axis handles
+    if (hasTime && !hasPrice) return "ew-resize";
+    if (hasPrice && !hasTime) return "ns-resize";
+    // Both axes: diagonal corner. Determine which diagonal from the entry.
+    if (hasTime && hasPrice) {
+      const entry = this.resolveAll().find((e) => e.d.id === hit.id);
+      if (entry && entry.x1 !== null && entry.x2 !== null && entry.y1 !== null && entry.y2 !== null) {
+        // time+price and time2+price2 are one diagonal, the other pair is the
+        // opposite diagonal.
+        const isMainDiagonal =
+          (timeKey === "time" && priceKey === "price") ||
+          (timeKey === "time2" && priceKey === "price2");
+        // Check which way the rectangle goes. If x1 < x2 and y1 < y2 (drawn
+        // top-left to bottom-right), the main diagonal is nwse. If drawn the
+        // other way, the visual diagonal flips but the anchor mapping stays
+        // the same, so we check the actual pixel positions.
+        if (isMainDiagonal) {
+          const goingDownRight = entry.x1 <= entry.x2 && entry.y1 <= entry.y2;
+          const goingUpRight = entry.x1 <= entry.x2 && entry.y1 > entry.y2;
+          return goingDownRight ? "nwse-resize" : goingUpRight ? "nesw-resize" : "nwse-resize";
+        } else {
+          const goingDownRight = entry.x1 <= entry.x2 && entry.y1 <= entry.y2;
+          const goingUpRight = entry.x1 <= entry.x2 && entry.y1 > entry.y2;
+          return goingDownRight ? "nesw-resize" : goingUpRight ? "nwse-resize" : "nesw-resize";
+        }
+      }
+    }
+    return "nwse-resize";
+  }
+
+  private applyCursor(interactionCursor: "pointer" | "grabbing" | string | null): void {
+    if (interactionCursor === "resize" || (interactionCursor && interactionCursor.endsWith("-resize"))) {
+      this.container.style.cursor = interactionCursor === "resize" ? "nwse-resize" : interactionCursor;
       return;
     }
     if (interactionCursor) {
@@ -1052,8 +1221,9 @@ export class DrawingToolsManager {
     }
     if (this.tool !== "none") {
       this.container.style.cursor = "crosshair";
+    } else {
+      // Reset to empty so lightweight-charts/browser can manage cursor
+      this.container.style.cursor = "";
     }
-    // When tool is "none", don't set cursor - let lightweight-charts manage it
-    // (lightweight-charts v5 sets resize cursor on pane separators)
   }
 }

@@ -212,7 +212,7 @@ export function TradingPage() {
   const { data: aiTraderEnabled } = useAiTraderEnabled();
   const [rightPanel, setRightPanel] = useState<
     "order" | "dom" | "watchlist" | "news" | "ai-trader" | "tv-analysis"
-  >("order");
+  >("dom");
   const [showRightPanel, setShowRightPanel] = useState(true);
 
   // ── Vertical resize: chart vs bottom panel ──
@@ -552,6 +552,7 @@ export function TradingPage() {
               candles={replayCandles ?? candles}
               selectedSymbol={selectedSymbol}
               timeframe={replayCandles ? "1m" : timeframe}
+              onTimeframeChange={handleTimeframeChange}
               isDark={isDark}
               activeIndicators={activeIndicators}
               hiddenIndicators={hiddenIndicators}

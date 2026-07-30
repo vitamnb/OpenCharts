@@ -6,7 +6,9 @@ import {
   type IndicatorType,
   type IndicatorParams,
   type IndicatorAppearance,
+  type IndicatorParamValue,
 } from "../../lib/indicators.ts";
+import { IndicatorControl } from "./IndicatorControl.tsx";
 import { cn } from "../../lib/utils.ts";
 
 interface Props {
@@ -116,45 +118,17 @@ export function IndicatorDialog({
                   No adjustable parameters for this indicator.
                 </p>
               ) : (
-                descriptors.map((desc) => (
-                  <div key={desc.key} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">{desc.label}</label>
-                      <input
-                        type="number"
-                        value={params[desc.key] ?? 0}
-                        min={desc.min}
-                        max={desc.max}
-                        step={desc.step}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          if (!isNaN(val)) {
-                            onParamsChange({ ...params, [desc.key]: val });
-                          }
-                        }}
-                        className="w-20 px-2 py-1 text-sm bg-background border border-border rounded text-right focus:outline-none focus:ring-1 focus:ring-primary"
-                      />
-                    </div>
-                    <input
-                      type="range"
-                      value={params[desc.key] ?? 0}
-                      min={desc.min}
-                      max={desc.max}
-                      step={desc.step}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val)) {
-                          onParamsChange({ ...params, [desc.key]: val });
-                        }
-                      }}
-                      className="w-full h-1.5 bg-secondary rounded-full appearance-none cursor-pointer accent-primary"
+                descriptors.map((desc) => {
+                  const paramVal: IndicatorParamValue = params[desc.key] ?? config.defaultParams[desc.key] ?? 0;
+                  return (
+                    <IndicatorControl
+                      key={desc.key}
+                      desc={desc}
+                      paramVal={paramVal}
+                      onChange={(key, val) => onParamsChange({ ...params, [key]: val })}
                     />
-                    <div className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>{desc.min}</span>
-                      <span>{desc.max}</span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </>
           )}
@@ -238,25 +212,6 @@ export function IndicatorDialog({
                 </div>
               </div>
 
-              {/* Visibility */}
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Visible</label>
-                <button
-                  type="button"
-                  onClick={() => onAppearanceChange({ ...appearance, visible: !appearance.visible })}
-                  className={cn(
-                    "relative w-9 h-5 rounded-full transition-colors",
-                    appearance.visible ? "bg-primary" : "bg-secondary",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-foreground transition-transform",
-                      appearance.visible ? "translate-x-4" : "translate-x-0.5",
-                    )}
-                  />
-                </button>
-              </div>
             </>
           )}
         </div>

@@ -144,25 +144,7 @@ export function IndicatorAppearanceDialog({ type, appearance, onChange, onClose 
             </div>
           </div>
 
-          {/* Visibility */}
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Visible</label>
-            <button
-              type="button"
-              onClick={() => onChange({ ...appearance, visible: !appearance.visible })}
-              className={cn(
-                "relative w-9 h-5 rounded-full transition-colors",
-                appearance.visible ? "bg-primary" : "bg-secondary",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 w-4 h-4 rounded-full bg-foreground transition-transform",
-                  appearance.visible ? "translate-x-4" : "translate-x-0.5",
-                )}
-              />
-            </button>
-          </div>
+
         </div>
 
         {/* Footer */}

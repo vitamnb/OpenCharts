@@ -137,6 +137,11 @@ export function resolveEntry(d: DrawingLine, ctx: ResolveCtx, state: EntryState)
     entry.seg = trendlineSegment(entry, ctx.chart.timeScale().width());
     if (state === "selected" || state === "preview") entry.stats = trendlineStats(d, ctx);
   }
+  if (d.type === "measure") {
+    // Measure is preview-only and always wants the readout, no matter the
+    // state (it never gets selected/hovered because it never commits).
+    entry.stats = trendlineStats(d, ctx);
+  }
   if (d.type === "position") {
     entry.yStop = d.stopPrice != null ? ctx.series.priceToCoordinate(d.stopPrice) : null;
     entry.yTarget = d.targetPrice != null ? ctx.series.priceToCoordinate(d.targetPrice) : null;
@@ -144,6 +149,12 @@ export function resolveEntry(d: DrawingLine, ctx: ResolveCtx, state: EntryState)
   if (d.type === "channel" || d.type === "hchannel") {
     entry.x3 = d.time3 != null ? timeToX(ctx, d.time3) : null;
     entry.y3 = d.price3 != null ? ctx.series.priceToCoordinate(d.price3) : null;
+  }
+  if (d.type === "brush" && d.points) {
+    entry.brushPoints = d.points.map(p => ({
+      x: timeToX(ctx, p.time),
+      y: ctx.series.priceToCoordinate(p.price),
+    }));
   }
   return entry;
 }
