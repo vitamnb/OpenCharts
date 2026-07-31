@@ -1,9 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { jesseSidecar } from "./jesse-sidecar";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), jesseSidecar()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -37,6 +38,12 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Jesse backtest API proxy (must be before /api to avoid being shadowed)
+      "/api/jesse": {
+        target: "http://127.0.0.1:9000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/jesse/, ""),
+      },
       "/api": {
         target: "http://localhost:3000",
         changeOrigin: true,

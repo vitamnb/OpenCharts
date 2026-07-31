@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { TrendingUp, Clock, History, Globe, Newspaper, Bot, ChevronDown } from "lucide-react";
+import { TrendingUp, Clock, History, Globe, Newspaper, Bot, ChevronDown, FlaskConical } from "lucide-react";
+import { StrategyBacktestPanel } from "./StrategyBacktestPanel.tsx";
+import type { JesseTrade } from "../../services/api/jesse";
 import { useAuthStore } from "../../services/store.tsx";
 import { useTradingStore } from "../../services/store.tsx";
 import {
@@ -38,9 +40,9 @@ function getErrorMessage(error: unknown): string {
 }
 
 export interface BottomPanelProps {
-  tab: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader";
+  tab: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy";
   onTabChange: (
-    t: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader",
+    t: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy",
   ) => void;
   positions: Position[];
   orders: Order[];
@@ -57,6 +59,9 @@ export interface BottomPanelProps {
   aiTraderEnabled?: boolean;
   height?: number;
   isFeedConnected?: boolean;
+  selectedSymbol?: string;
+  selectedTimeframe?: string;
+  onBacktestTrades?: (trades: JesseTrade[]) => void;
 }
 
 export function BottomPanel({
@@ -77,6 +82,9 @@ export function BottomPanel({
   aiTraderEnabled,
   height = 220,
   isFeedConnected = true,
+  selectedSymbol,
+  selectedTimeframe,
+  onBacktestTrades,
 }: BottomPanelProps) {
   const isDemo = useAuthStore((s) => s.isDemo);
   const cancelOrder = useCancelOrder();
@@ -85,6 +93,14 @@ export function BottomPanel({
   const accounts = useTradingStore((s) => s.accounts as AccountOption[]);
   const activeAccount = accounts.find((account) => account.id === accountId);
   const [collapsed, setCollapsed] = useState(true);
+
+  // Auto-expand when switching to the strategy tab
+  const handleTabChange = (t: typeof tab) => {
+    onTabChange(t);
+    if (t === "strategy" && collapsed) {
+      setCollapsed(false);
+    }
+  };
 
   const handleCancel = (orderId: string) => {
     if (!accountId || isDemo) {
@@ -189,6 +205,7 @@ export function BottomPanel({
     { key: "calendar", label: "Calendar", icon: Globe },
     { key: "news", label: "News", icon: Newspaper },
     ...(aiTraderEnabled ? [{ key: "ai-trader" as const, label: "AI Trader", icon: Bot }] : []),
+    { key: "strategy" as const, label: "Strategy", icon: FlaskConical },
   ];
 
   return (
@@ -201,7 +218,7 @@ export function BottomPanel({
         {tabs.map((t) => (
           <button
             key={t.key}
-            onClick={() => onTabChange(t.key)}
+            onClick={() => handleTabChange(t.key)}
             className={cn(
               "flex items-center gap-1 px-2.5 py-1 rounded shrink-0 whitespace-nowrap text-[13px] font-semibold",
               tab === t.key
@@ -309,6 +326,13 @@ export function BottomPanel({
         {tab === "calendar" && <EconomicCalendar />}
         {tab === "news" && <NewsFeed />}
         {tab === "ai-trader" && <AiTraderPanel accountId={accountId} />}
+        {tab === "strategy" && (
+          <StrategyBacktestPanel
+            symbol={selectedSymbol ?? ""}
+            timeframe={selectedTimeframe ?? "1h"}
+            onTradesUpdate={onBacktestTrades}
+          />
+        )}
       </div>
       )}
     </div>

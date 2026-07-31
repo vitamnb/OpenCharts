@@ -38,6 +38,7 @@ import { wsClient } from "../services/ws.ts";
 import { toast } from "../services/toast.ts";
 import { AiTraderPanel } from "./AiTraderPage.tsx";
 import { BottomPanel } from "./trading/BottomPanel.tsx";
+import type { JesseTrade } from "../services/api/jesse";
 import { ChartPanel } from "./trading/ChartPanel.tsx";
 import { IndicatorDialog } from "./trading/IndicatorDialog.tsx";
 import { ChartToolbar } from "./trading/ChartToolbar.tsx";
@@ -207,13 +208,16 @@ export function TradingPage() {
     updateChartPreferences({ activePlugins: ids });
   }, []);
   const [bottomTab, setBottomTab] = useState<
-    "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader"
+    "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy"
   >("positions");
   const { data: aiTraderEnabled } = useAiTraderEnabled();
   const [rightPanel, setRightPanel] = useState<
     "order" | "dom" | "watchlist" | "news" | "ai-trader" | "tv-analysis"
   >("dom");
   const [showRightPanel, setShowRightPanel] = useState(true);
+
+  // Backtest trades for chart visualisation
+  const [backtestTrades, setBacktestTrades] = useState<JesseTrade[]>([]);
 
   // ── Vertical resize: chart vs bottom panel ──
   const [bottomPanelHeight, setBottomPanelHeight] = useState(() => {
@@ -603,6 +607,7 @@ export function TradingPage() {
                   prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
                 );
               }}
+              backtestTrades={backtestTrades}
             />
           </div>
 
@@ -650,6 +655,9 @@ export function TradingPage() {
             aiTraderEnabled={aiTraderEnabled?.enabled ?? false}
             height={bottomPanelHeight}
             isFeedConnected={isFeedConnected}
+            selectedSymbol={selectedSymbol}
+            selectedTimeframe={timeframe}
+            onBacktestTrades={setBacktestTrades}
             journalEntries={journalData?.entries || []}
             journalLoading={journalLoading}
             onCreateJournal={(data: CreateJournalEntryInput) =>

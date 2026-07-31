@@ -36,6 +36,10 @@ import {
   detectCrossings,
   playAlertBeep,
 } from "../../lib/chart-plugins/drawing-tools/line-alerts.ts";
+import { tradesToMarkers } from "../../lib/backtest-markers";
+import { BacktestShadingPlugin } from "../../lib/chart-plugins/backtest-shading/backtest-shading";
+import { tradesToShading } from "../../lib/backtest-markers";
+import type { JesseTrade } from "../../services/api/jesse";
 import { DrawingToolsManager } from "../../lib/chart-plugins/drawing-tools/manager.ts";
 import { CrosshairHighlightPrimitive } from "../../lib/chart-plugins/highlight-bar-crosshair/highlight-bar-crosshair.ts";
 import { SessionBreaks } from "../../lib/chart-plugins/session-breaks/session-breaks.ts";
@@ -278,6 +282,8 @@ export interface ChartPanelProps {
    * staleness watchdog must not treat the old last-bar as a data gap.
    */
   isReplaying?: boolean;
+  /** Backtest trades from Jesse, rendered as entry/exit markers on the chart. */
+  backtestTrades?: JesseTrade[];
 }
 
 // ── Chart plugin overlays ─────────────────────────────────────────────────────
@@ -1125,6 +1131,7 @@ export function ChartPanel({
   onToggleStayInDrawingMode,
   onToggleIndicator,
   isReplaying = false,
+  backtestTrades = [],
 }: ChartPanelProps) {
   const queryClient = useQueryClient();
   const lastGapRefetchAtRef = useRef<number>(0);
@@ -1438,6 +1445,43 @@ export function ChartPanel({
       plugin.detach();
     };
   }, [replayTradeEvents, timeframe]);
+
+  // ── Backtest trade markers ────────────────────────────────
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    const btMarkers = tradesToMarkers(backtestTrades);
+    const plugin = createSeriesMarkers(series, btMarkers);
+    return () => {
+      plugin.detach();
+    };
+  }, [backtestTrades]);
+
+  // ── Backtest hold-period shading ─────────────────────────
+  const shadingPluginRef = useRef<BacktestShadingPlugin | null>(null);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    if (!chart || !series) return;
+
+    // Clean up previous plugin
+    shadingPluginRef.current?.detach();
+
+    if (backtestTrades.length === 0) return;
+
+    const shadingData = tradesToShading(backtestTrades);
+    if (shadingData.length === 0) return;
+
+    const plugin = new BacktestShadingPlugin({ data: shadingData });
+    plugin.attach(chart, series);
+    shadingPluginRef.current = plugin;
+
+    return () => {
+      plugin.detach();
+      shadingPluginRef.current = null;
+    };
+  }, [backtestTrades]);
 
   // ── Candle close countdown timer ───────────────────────────
   useEffect(() => {

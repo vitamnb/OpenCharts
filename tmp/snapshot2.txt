@@ -1,0 +1,356 @@
+- generic [ref=e1] clickable [onclick]
+  - button "BTCUSD" [ref=e17]
+  - StaticText "63,682.84"
+  - StaticText "/"
+  - StaticText "63,689.22"
+  - StaticText "Sprd: "
+  - StaticText "638.2"
+  - button "15m" [ref=e18]
+    - StaticText "15m"
+  - button "Templates" [ref=e19]
+    - StaticText "Templates"
+  - button "Indicators" [ref=e20]
+  - button "Drawing Tools" [ref=e21]
+  - button "Chart Plugins" [ref=e22]
+  - button "Depth of Market" [ref=e2]
+  - button "Order Panel" [ref=e3]
+  - button "Watchlist" [ref=e4]
+  - button "News" [ref=e5]
+  - button "TradingView Analysis" [ref=e6]
+  - button [ref=e7]
+  - StaticText "DEMO"
+  - generic
+    - StaticText "Connected"
+  - generic
+    - generic
+      - StaticText "BTCUSD"
+      - StaticText "15m"
+      - StaticText "O"
+      - StaticText "63822.00"
+      - StaticText "H"
+      - StaticText "63837.89"
+      - StaticText "L"
+      - StaticText "63457.00"
+      - StaticText "C"
+      - StaticText "63686.03"
+      - StaticText "-0.21"
+      - StaticText "%"
+      - StaticText "12:06"
+      - StaticText "Bid"
+      - StaticText "63682.84"
+      - StaticText "Ask"
+      - StaticText "63689.22"
+      - StaticText "Spread"
+      - StaticText "638.2"
+    - table
+      - row
+        - cell
+        - cell
+          - generic
+            - Canvas
+            - Canvas
+        - cell
+          - generic
+            - Canvas
+            - Canvas
+      - row
+        - cell
+        - cell
+          - generic
+            - Canvas
+            - Canvas
+        - cell
+    - generic
+      - button "Dock to left edge" [ref=e24]
+      - button "Cursor" [ref=e25]
+      - button "Lines" [ref=e174]
+      - button "Fibonacci" [ref=e175]
+      - button "Shapes" [ref=e176]
+      - button "Trade" [ref=e177]
+      - button "Text" [ref=e26]
+      - button "Indicators" [ref=e27]
+      - button "Candlestick Patterns" [ref=e178]
+      - button "Timeframe" [ref=e179]
+      - button "Magnet: none" [ref=e28]
+      - button "Stay in drawing mode" [ref=e29]
+  - button "Positions" [ref=e8]
+    - StaticText "Positions"
+  - button "Orders" [ref=e9]
+    - StaticText "Orders"
+  - button "Trade History" [ref=e10]
+    - StaticText "Trade History"
+  - button "Calendar" [ref=e11]
+    - StaticText "Calendar"
+  - button "News" [ref=e12]
+    - StaticText "News"
+  - button "Strategy" [ref=e13]
+    - StaticText "Strategy"
+  - button "Collapse panel" [ref=e14]
+  - StaticText "NET PROFIT"
+  - StaticText "+$31.36"
+  - StaticText "RETURN"
+  - StaticText "+0.31%"
+  - StaticText "TRADES"
+  - StaticText "10.00"
+  - StaticText "WIN RATE"
+  - StaticText "40.0%"
+  - StaticText "MAX DD"
+  - StaticText "-0.42%"
+  - StaticText "SHARPE"
+  - StaticText "0.80"
+  - StaticText "SORTINO"
+  - StaticText "1.68"
+  - StaticText "PF"
+  - StaticText "--"
+  - StaticText "CALMAR"
+  - StaticText "1.50"
+  - StaticText "EXPECTANCY"
+  - StaticText "+$3.14"
+  - StaticText "ANNUAL"
+  - StaticText "+0.63%"
+  - table
+    - rowgroup
+      - row
+        - columnheader "OPENED" [ref=e180]
+        - columnheader "CLOSED" [ref=e181]
+        - columnheader "SYMBOL" [ref=e182]
+        - columnheader "SIDE" [ref=e183]
+        - columnheader "QTY" [ref=e184]
+        - columnheader "ENTRY" [ref=e185]
+        - columnheader "EXIT" [ref=e186]
+        - columnheader "PNL" [ref=e187]
+        - columnheader "PNL %" [ref=e188]
+        - columnheader "HOLD" [ref=e189]
+    - row
+      - cell "15 Feb, 05:30" [ref=e30]
+      - cell "15 Feb, 06:30" [ref=e31]
+      - cell "BTC-USDT" [ref=e32]
+      - cell "S" [ref=e33]
+      - cell "0.0287" [ref=e34]
+      - cell "69707.30" [ref=e35]
+      - cell "69809.20" [ref=e36]
+      - cell "--" [ref=e37]
+      - cell "--" [ref=e38]
+      - cell "3600" [ref=e39]
+    - row
+      - cell "15 Mar, 20:45" [ref=e40]
+      - cell "15 Mar, 23:45" [ref=e41]
+      - cell "BTC-USDT" [ref=e42]
+      - cell "S" [ref=e43]
+      - cell "0.0279" [ref=e44]
+      - cell "71715.90" [ref=e45]
+      - cell "71540.60" [ref=e46]
+      - cell "--" [ref=e47]
+      - cell "--" [ref=e48]
+      - cell "10800" [ref=e49]
+    - row
+      - cell "20 Mar, 19:45" [ref=e50]
+      - cell "21 Mar, 01:00" [ref=e51]
+      - cell "BTC-USDT" [ref=e52]
+      - cell "S" [ref=e53]
+      - cell "0.0281" [ref=e54]
+      - cell "71068.30" [ref=e55]
+      - cell "69831.10" [ref=e56]
+      - cell "--" [ref=e57]
+      - cell "--" [ref=e58]
+      - cell "18900" [ref=e59]
+    - row
+      - cell "18 Apr, 08:15" [ref=e60]
+      - cell "19 Apr, 22:45" [ref=e61]
+      - cell "BTC-USDT" [ref=e62]
+      - cell "S" [ref=e63]
+      - cell "0.0259" [ref=e64]
+      - cell "77374.50" [ref=e65]
+      - cell "75457.80" [ref=e66]
+      - cell "--" [ref=e67]
+      - cell "--" [ref=e68]
+      - cell "138600" [ref=e69]
+    - row
+      - cell "30 Apr, 04:45" [ref=e70]
+      - cell "30 Apr, 05:00" [ref=e71]
+      - cell "BTC-USDT" [ref=e72]
+      - cell "L" [ref=e73]
+      - cell "0.0268" [ref=e74]
+      - cell "75196.00" [ref=e75]
+      - cell "75470.10" [ref=e76]
+      - cell "--" [ref=e77]
+      - cell "--" [ref=e78]
+      - cell "900" [ref=e79]
+    - row
+      - cell "8 May, 01:15" [ref=e80]
+      - cell "8 May, 01:19" [ref=e81]
+      - cell "BTC-USDT" [ref=e82]
+      - cell "L" [ref=e83]
+      - cell "0.0251" [ref=e84]
+      - cell "80118.10" [ref=e85]
+      - cell "79841.09" [ref=e86]
+      - cell "--" [ref=e87]
+      - cell "--" [ref=e88]
+      - cell "240" [ref=e89]
+    - row
+      - cell "16 Jun, 02:30" [ref=e90]
+      - cell "16 Jun, 02:45" [ref=e91]
+      - cell "BTC-USDT" [ref=e92]
+      - cell "S" [ref=e93]
+      - cell "0.0300" [ref=e94]
+      - cell "67149.40" [ref=e95]
+      - cell "67129.20" [ref=e96]
+      - cell "--" [ref=e97]
+      - cell "--" [ref=e98]
+      - cell "900" [ref=e99]
+    - row
+      - cell "29 Jun, 09:15" [ref=e100]
+      - cell "29 Jun, 12:14" [ref=e101]
+      - cell "BTC-USDT" [ref=e102]
+      - cell "L" [ref=e103]
+      - cell "0.0340" [ref=e104]
+      - cell "59235.30" [ref=e105]
+      - cell "58897.63" [ref=e106]
+      - cell "--" [ref=e107]
+      - cell "--" [ref=e108]
+      - cell "10740" [ref=e109]
+    - row
+      - cell "13 Jul, 12:30" [ref=e110]
+      - cell "13 Jul, 12:45" [ref=e111]
+      - cell "BTC-USDT" [ref=e112]
+      - cell "L" [ref=e113]
+      - cell "0.0317" [ref=e114]
+      - cell "63440.50" [ref=e115]
+      - cell "63441.80" [ref=e116]
+      - cell "--" [ref=e117]
+      - cell "--" [ref=e118]
+      - cell "900" [ref=e119]
+    - row
+      - cell "19 Jul, 03:30" [ref=e120]
+      - cell "19 Jul, 03:45" [ref=e121]
+      - cell "BTC-USDT" [ref=e122]
+      - cell "S" [ref=e123]
+      - cell "0.0312" [ref=e124]
+      - cell "64267.20" [ref=e125]
+      - cell "64413.30" [ref=e126]
+      - cell "--" [ref=e127]
+      - cell "--" [ref=e128]
+      - cell "900" [ref=e129]
+  - button "New Backtest" [ref=e15]
+  - StaticText "Completed in "
+  - StaticText "4.5"
+  - StaticText "s"
+  - button "History" [ref=e23]
+  - heading "DEPTH OF MARKET" [level=3, ref=e16]
+  - StaticText "BTCUSD"
+  - table
+    - rowgroup
+      - row
+        - columnheader "BID SIZE" [ref=e190]
+        - columnheader "PRICE" [ref=e191]
+        - columnheader "ASK SIZE" [ref=e192]
+    - row
+      - cell
+      - cell "63,749.85395" [ref=e130]
+      - cell "45" [ref=e131]
+        - StaticText "45"
+    - row
+      - cell
+      - cell "63,743.47155" [ref=e132]
+      - cell "25" [ref=e133]
+        - StaticText "25"
+    - row
+      - cell
+      - cell "63,737.08916" [ref=e134]
+      - cell "46" [ref=e135]
+        - StaticText "46"
+    - row
+      - cell
+      - cell "63,730.70676" [ref=e136]
+      - cell "22" [ref=e137]
+        - StaticText "22"
+    - row
+      - cell
+      - cell "63,724.32437" [ref=e138]
+      - cell "7" [ref=e139]
+        - StaticText "7"
+    - row
+      - cell
+      - cell "63,717.94197" [ref=e140]
+      - cell "40" [ref=e141]
+        - StaticText "40"
+    - row
+      - cell
+      - cell "63,711.55958" [ref=e142]
+      - cell "19" [ref=e143]
+        - StaticText "19"
+    - row
+      - cell
+      - cell "63,705.17718" [ref=e144]
+      - cell "10" [ref=e145]
+        - StaticText "10"
+    - row
+      - cell
+      - cell "63,698.79479" [ref=e146]
+      - cell "10" [ref=e147]
+        - StaticText "10"
+    - row
+      - cell
+      - cell "63,692.41239" [ref=e148]
+      - cell "39" [ref=e149]
+        - StaticText "39"
+    - row
+      - cell
+      - cell "63,689.22120" [ref=e150]
+      - cell "56" [ref=e151]
+        - StaticText "56"
+    - row
+      - cell "75" [ref=e152]
+        - StaticText "75"
+      - cell "63,682.83880" [ref=e153]
+      - cell
+    - row
+      - cell "32" [ref=e154]
+        - StaticText "32"
+      - cell "63,679.64761" [ref=e155]
+      - cell
+    - row
+      - cell "29" [ref=e156]
+        - StaticText "29"
+      - cell "63,673.26521" [ref=e157]
+      - cell
+    - row
+      - cell "23" [ref=e158]
+        - StaticText "23"
+      - cell "63,666.88282" [ref=e159]
+      - cell
+    - row
+      - cell "47" [ref=e160]
+        - StaticText "47"
+      - cell "63,660.50042" [ref=e161]
+      - cell
+    - row
+      - cell "29" [ref=e162]
+        - StaticText "29"
+      - cell "63,654.11803" [ref=e163]
+      - cell
+    - row
+      - cell "12" [ref=e164]
+        - StaticText "12"
+      - cell "63,647.73563" [ref=e165]
+      - cell
+    - row
+      - cell "9" [ref=e166]
+        - StaticText "9"
+      - cell "63,641.35324" [ref=e167]
+      - cell
+    - row
+      - cell "35" [ref=e168]
+        - StaticText "35"
+      - cell "63,634.97084" [ref=e169]
+      - cell
+    - row
+      - cell "53" [ref=e170]
+        - StaticText "53"
+      - cell "63,628.58845" [ref=e171]
+      - cell
+    - row
+      - cell "21" [ref=e172]
+        - StaticText "21"
+      - cell "63,622.20605" [ref=e173]
+      - cell
