@@ -4,9 +4,9 @@ import path from "path";
 
 const JESSE_VENV_PYTHON = path.resolve(
   __dirname,
-  "../trading-stack/jesse/venv/Scripts/python.exe",
+  "../jesse/venv/Scripts/python.exe",
 );
-const JESSE_PROJECT_ROOT = path.resolve(__dirname, "../trading-stack/jesse-project");
+const JESSE_PROJECT_ROOT = path.resolve(__dirname, "../jesse-project");
 const JESSE_LAUNCHER = path.resolve(JESSE_PROJECT_ROOT, "launch.py");
 const JESSE_PORT = 9000;
 
