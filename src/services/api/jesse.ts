@@ -126,6 +126,7 @@ export async function listStrategies(): Promise<JesseStrategy[]> {
   // Fallback: known strategies in jesse-project/strategies/
   return [
     { name: "Staircase", path: "Staircase" },
+    { name: "VwapRsiConfluence", path: "VwapRsiConfluence" },
   ];
 }
 
