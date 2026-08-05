@@ -258,8 +258,287 @@ export function vwap(candles: CandleData[]): IndicatorPoint[] {
   return result;
 }
 
+// ── Anchored VWAP ───────────────────────────────────────────
+export function vwapAnchored(
+  candles: CandleData[],
+  anchorPeriod: "1D" | "1W" | "1M" | "12M",
+): IndicatorPoint[] {
+  const result: IndicatorPoint[] = [];
+  let cumVolPrice = 0;
+  let cumVol = 0;
+  let prevPeriodKey = "";
+
+  for (const c of candles) {
+    const date = new Date(c.time * 1000);
+    let periodKey: string;
+
+    switch (anchorPeriod) {
+      case "1D":
+        periodKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+        break;
+      case "1W": {
+        // ISO week number
+        const tmp = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+        const dayNum = (tmp.getUTCDay() + 6) % 7;
+        tmp.setUTCDate(tmp.getUTCDate() - dayNum + 3);
+        const firstThursday = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 4));
+        const weekNum = 1 + Math.round(((tmp.getTime() - firstThursday.getTime()) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+        periodKey = `${tmp.getUTCFullYear()}-W${weekNum}`;
+        break;
+      }
+      case "1M":
+        periodKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}`;
+        break;
+      case "12M":
+        periodKey = `${date.getUTCFullYear()}`;
+        break;
+      default:
+        periodKey = `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+    }
+
+    if (periodKey !== prevPeriodKey) {
+      cumVolPrice = 0;
+      cumVol = 0;
+      prevPeriodKey = periodKey;
+    }
+
+    const typicalPrice = (c.high + c.low + c.close) / 3;
+    const vol = c.volume || 1;
+    cumVolPrice += typicalPrice * vol;
+    cumVol += vol;
+    result.push({ time: c.time, value: cumVol > 0 ? cumVolPrice / cumVol : typicalPrice });
+  }
+  return result;
+}
+
+// ── RSI with configurable source ────────────────────────────
+export function rsiCustom(
+  candles: CandleData[],
+  period: number,
+  source: "open" | "high" | "low" | "close" | "hl2" | "hlc3" | "ohlc4" = "close",
+): IndicatorPoint[] {
+  const result: IndicatorPoint[] = [];
+  if (candles.length < period + 1) return result;
+
+  const getSource = (c: CandleData): number => {
+    switch (source) {
+      case "open": return c.open;
+      case "high": return c.high;
+      case "low": return c.low;
+      case "hl2": return (c.high + c.low) / 2;
+      case "hlc3": return (c.high + c.low + c.close) / 3;
+      case "ohlc4": return (c.open + c.high + c.low + c.close) / 4;
+      default: return c.close;
+    }
+  };
+
+  let avgGain = 0;
+  let avgLoss = 0;
+
+  for (let i = 1; i <= period; i++) {
+    const change = getSource(candles[i]!) - getSource(candles[i - 1]!);
+    if (change > 0) avgGain += change;
+    else avgLoss += Math.abs(change);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  const rs0 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  result.push({ time: candles[period]!.time, value: rs0 });
+
+  for (let i = period + 1; i < candles.length; i++) {
+    const change = getSource(candles[i]!) - getSource(candles[i - 1]!);
+    const gain = change > 0 ? change : 0;
+    const loss = change < 0 ? Math.abs(change) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    const rsiVal = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    result.push({ time: candles[i]!.time, value: rsiVal });
+  }
+  return result;
+}
+
+// ── Pivot Detection ─────────────────────────────────────────
+export interface PivotPoint {
+  index: number;
+  time: number;
+  price: number;
+  type: "high" | "low";
+}
+
+export function detectPivots(
+  candles: CandleData[],
+  leftBars: number,
+  rightBars: number,
+): { highs: PivotPoint[]; lows: PivotPoint[] } {
+  const highs: PivotPoint[] = [];
+  const lows: PivotPoint[] = [];
+
+  if (candles.length < leftBars + rightBars + 1) return { highs, lows };
+
+  for (let i = leftBars; i < candles.length - rightBars; i++) {
+    const pivotCandidate = candles[i]!;
+    let isHigh = true;
+    let isLow = true;
+
+    for (let j = i - leftBars; j <= i + rightBars; j++) {
+      if (j === i) continue;
+      if (candles[j]!.high >= pivotCandidate.high) isHigh = false;
+      if (candles[j]!.low <= pivotCandidate.low) isLow = false;
+      if (!isHigh && !isLow) break;
+    }
+
+    if (isHigh) {
+      highs.push({ index: i, time: pivotCandidate.time, price: pivotCandidate.high, type: "high" });
+    }
+    if (isLow) {
+      lows.push({ index: i, time: pivotCandidate.time, price: pivotCandidate.low, type: "low" });
+    }
+  }
+
+  return { highs, lows };
+}
+
+// ── S/R Zone Clustering ─────────────────────────────────────
+export interface SRZone {
+  price: number;
+  touches: number;
+  firstTime: number;
+  lastTime: number;
+  lastIndex: number;
+}
+
+export function clusterZones(
+  pivots: PivotPoint[],
+  tolerancePct: number,
+  maxZones: number,
+): SRZone[] {
+  const zones: SRZone[] = [];
+
+  for (const p of pivots) {
+    const tolerance = p.price * (tolerancePct / 100);
+
+    // Find closest existing zone
+    let closestIdx = -1;
+    let closestDist = Infinity;
+    for (let i = 0; i < zones.length; i++) {
+      const dist = Math.abs(zones[i]!.price - p.price);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestIdx = i;
+      }
+    }
+
+    if (closestIdx >= 0 && closestDist <= tolerance) {
+      // Merge into existing zone: update weighted midpoint
+      const z = zones[closestIdx]!;
+      z.price = (z.price * z.touches + p.price) / (z.touches + 1);
+      z.touches++;
+      z.lastTime = p.time;
+      z.lastIndex = p.index;
+    } else {
+      // Create new zone
+      zones.push({
+        price: p.price,
+        touches: 1,
+        firstTime: p.time,
+        lastTime: p.time,
+        lastIndex: p.index,
+      });
+    }
+
+    // Cap zones: remove weakest if over max
+    if (zones.length > maxZones) {
+      let minIdx = 0;
+      let minTouches = zones[0]!.touches;
+      for (let i = 1; i < zones.length; i++) {
+        if (zones[i]!.touches < minTouches) {
+          minTouches = zones[i]!.touches;
+          minIdx = i;
+        }
+      }
+      zones.splice(minIdx, 1);
+    }
+  }
+
+  return zones;
+}
+
+// ── VWAP+RSI Confluence State ───────────────────────────────
+export type ConfluenceState = "bullish" | "bearish" | "neutral";
+export type ConfluenceSignal = "bull" | "bear" | "notrade" | "counter" | null;
+
+export interface ConfluenceBar {
+  time: number;
+  state: ConfluenceState;
+  atSupport: boolean;
+  atResistance: boolean;
+  signal: ConfluenceSignal;
+}
+
+export function vwapRsiConfluence(
+  candles: CandleData[],
+  vwapData: IndicatorPoint[],
+  rsiData: IndicatorPoint[],
+  supports: SRZone[],
+  resistances: SRZone[],
+  rsiMid: number,
+  tolerancePct: number,
+): ConfluenceBar[] {
+  const result: ConfluenceBar[] = [];
+
+  // Build lookup maps
+  const vwapMap = new Map<number, number>();
+  for (const v of vwapData) vwapMap.set(v.time, v.value);
+  const rsiMap = new Map<number, number>();
+  for (const r of rsiData) rsiMap.set(r.time, r.value);
+
+  for (const c of candles) {
+    const vwap = vwapMap.get(c.time);
+    const rsi = rsiMap.get(c.time);
+
+    if (vwap === undefined || rsi === undefined) {
+      result.push({ time: c.time, state: "neutral", atSupport: false, atResistance: false, signal: null });
+      continue;
+    }
+
+    const isBullish = c.close > vwap && rsi > rsiMid;
+    const isBearish = c.close < vwap && rsi < rsiMid;
+    const state: ConfluenceState = isBullish ? "bullish" : isBearish ? "bearish" : "neutral";
+
+    // Check proximity to zones
+    const supTol = c.close * (tolerancePct / 100);
+    let atSupport = false;
+    let atResistance = false;
+
+    for (const s of supports) {
+      if (Math.abs(c.close - s.price) <= supTol) {
+        atSupport = true;
+        break;
+      }
+    }
+    for (const r of resistances) {
+      if (Math.abs(c.close - r.price) <= supTol) {
+        atResistance = true;
+        break;
+      }
+    }
+
+    // Determine confluence signal
+    let signal: ConfluenceSignal = null;
+    if (atSupport && state === "bullish") signal = "bull";
+    else if (atResistance && state === "bearish") signal = "bear";
+    else if ((atSupport || atResistance) && state === "neutral") signal = "notrade";
+    else if ((atSupport && state === "bearish") || (atResistance && state === "bullish")) signal = "counter";
+
+    result.push({ time: c.time, state, atSupport, atResistance, signal });
+  }
+
+  return result;
+}
+
 // ── Indicator Registry (for UI) ──────────────────────────────
-export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV";
+export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV" | "VWAP_RSI_SR";
 
 // Map our indicator types to the lightweight-charts-indicators library export names
 export const LIB_KEY: Partial<Record<IndicatorType, string>> = {
@@ -282,7 +561,8 @@ export type IndicatorCategory =
   | "Oscillators"
   | "Volatility"
   | "Volume"
-  | "Trend";
+  | "Trend"
+  | "Confluence";
 
 export interface IndicatorConfig {
   type: IndicatorType;
@@ -390,6 +670,16 @@ export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
       { key: "maType", label: "Smoothing Type", min: 0, max: 0, step: 0, controlType: "select", options: ["None", "SMA", "SMA + Bollinger Bands", "EMA", "SMMA (RMA)", "WMA", "VWMA"] },
       { key: "maLength", label: "Smoothing Length", min: 1, max: 200, step: 1 },
       { key: "bbMult", label: "BB StdDev", min: 0.001, max: 50, step: 0.1 },
+    ],
+    VWAP_RSI_SR: [
+      { key: "vwapAnchor", label: "VWAP Anchor", min: 0, max: 0, step: 0, controlType: "select", options: ["1D", "1W", "1M", "12M"] },
+      { key: "rsiLength", label: "RSI Length", min: 2, max: 50, step: 1 },
+      { key: "rsiMid", label: "RSI Midline", min: 1, max: 99, step: 1 },
+      { key: "pivotLen", label: "Pivot Length", min: 1, max: 20, step: 1 },
+      { key: "srLookback", label: "S/R Lookback", min: 10, max: 200, step: 1 },
+      { key: "srTolerance", label: "S/R Tolerance %", min: 0.05, max: 2.0, step: 0.05 },
+      { key: "maxZones", label: "Max Zones/Side", min: 1, max: 20, step: 1 },
+      { key: "srExtend", label: "Zone Extension", min: 0, max: 100, step: 1 },
     ],
   };
   return descriptors[type] ?? [];
@@ -505,5 +795,15 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
     defaultParams: { maType: "None", maLength: 14, bbMult: 2 },
     color: "#9c27b0",
     useLib: true,
+  },
+  {
+    type: "VWAP_RSI_SR",
+    label: "VWAP+RSI S/R Confluence",
+    shortLabel: "Confluence",
+    pane: "overlay",
+    category: "Confluence",
+    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLen: 5, srLookback: 50, srTolerance: 0.3, maxZones: 8, srExtend: 20 },
+    color: "#42a5f5",
+    useLib: false,
   },
 ];

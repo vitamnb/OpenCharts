@@ -20,6 +20,7 @@ const CATEGORY_ORDER: IndicatorCategory[] = [
   "Volatility",
   "Volume",
   "Trend",
+  "Confluence",
 ];
 
 export function IndicatorCommandPalette({ open, onClose, onSelect, activeIndicators }: Props) {

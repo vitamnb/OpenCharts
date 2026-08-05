@@ -74,6 +74,7 @@ import { ObjectTreePanel } from "./ObjectTreePanel.tsx";
 import { useChallengeLevels } from "./useChallengeLevels.ts";
 import { useIndicators } from "./useIndicators.ts";
 import { useIndicatorPaneZoom } from "./useIndicatorPaneZoom.ts";
+import { useVwapRsiConfluence } from "./useVwapRsiConfluence.ts";
 import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
 import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
 import { IndicatorCommandPalette } from "./IndicatorCommandPalette.tsx";
@@ -1420,6 +1421,11 @@ export function ChartPanel({
 
   // Candlestick pattern markers on the main chart
   useCandlestickPatterns(chartRef, candleSeriesRef, chartData, activePatterns, volumeData);
+
+  // VWAP+RSI S/R Confluence composite indicator
+  const confluenceEnabled = activeIndicators.includes("VWAP_RSI_SR");
+  const confluenceParams = indicatorParams["VWAP_RSI_SR"] as Partial<import("./useVwapRsiConfluence.ts").VwapRsiSrParams> | undefined;
+  useVwapRsiConfluence(chartRef, candleSeriesRef, chartData, confluenceEnabled, confluenceParams ?? {}, volumeData);
 
   // ── Indicator pane price scale drag-to-zoom ──
   // lightweight-charts v5 doesn't support drag-to-zoom on custom overlay price
