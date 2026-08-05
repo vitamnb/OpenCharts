@@ -39,6 +39,7 @@ export interface VwapRsiSrParams {
   srTolerance: number;
   maxZones: number;
   srExtend: number;
+  showVwapLine: boolean;
 }
 
 const DEFAULT_PARAMS: VwapRsiSrParams = {
@@ -50,12 +51,13 @@ const DEFAULT_PARAMS: VwapRsiSrParams = {
   srTolerance: 0.3,
   maxZones: 8,
   srExtend: 20,
+  showVwapLine: true,
 };
 
 // Colours for confluence candle states
 const BULL_COLOR = "#0ecb81";
 const BEAR_COLOR = "#f6465d";
-const NEUTRAL_COLOR = "#888888";
+const NEUTRAL_COLOR = "#ffffff";
 
 // S/R zone line colours
 const SUPPORT_LINE = "rgba(14, 203, 129, 0.6)";
@@ -64,7 +66,7 @@ const RESISTANCE_LINE = "rgba(246, 70, 93, 0.6)";
 // Marker colours
 const BULL_MARKER = "#0ecb81";
 const BEAR_MARKER = "#f6465d";
-const NOTRADE_MARKER = "#666666";
+const NOTRADE_MARKER = "#ff9800";
 const COUNTER_MARKER = "#f0b90b";
 
 export function useVwapRsiConfluence(
@@ -205,7 +207,7 @@ export function useVwapRsiConfluence(
       value: v.value,
     }));
 
-    if (vwapLineData.length > 0) {
+    if (vwapLineData.length > 0 && p.showVwapLine) {
       vwapSeriesRef.current = chart.addSeries(LineSeries, {
         color: "#42a5f5",
         lineWidth: 2,

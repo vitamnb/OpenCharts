@@ -1422,10 +1422,9 @@ export function ChartPanel({
   // Candlestick pattern markers on the main chart
   useCandlestickPatterns(chartRef, candleSeriesRef, chartData, activePatterns, volumeData);
 
-  // VWAP+RSI S/R Confluence composite indicator
+  // VWAP+RSI S/R Confluence: compute only (colouring applied after data effect)
   const confluenceEnabled = activeIndicators.includes("VWAP_RSI_SR");
   const confluenceParams = indicatorParams["VWAP_RSI_SR"] as Partial<import("./useVwapRsiConfluence.ts").VwapRsiSrParams> | undefined;
-  useVwapRsiConfluence(chartRef, candleSeriesRef, chartData, confluenceEnabled, confluenceParams ?? {}, volumeData);
 
   // ── Indicator pane price scale drag-to-zoom ──
   // lightweight-charts v5 doesn't support drag-to-zoom on custom overlay price
@@ -1901,6 +1900,9 @@ export function ChartPanel({
     replayBufferedLive(buffered, chartData, ctx);
     return scheduleStaleRefetch(chartData, ctx);
   }, [chartData, volumeData, selectedSymbol, timeframe, makeRtCtx]);
+
+  // VWAP+RSI S/R Confluence: apply colours AFTER data effect so they survive
+  useVwapRsiConfluence(chartRef, candleSeriesRef, chartData, confluenceEnabled, confluenceParams ?? {}, volumeData);
 
   // ── Real-time candle updates ──────────────────────────
 

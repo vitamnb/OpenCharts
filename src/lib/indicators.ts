@@ -680,6 +680,7 @@ export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
       { key: "srTolerance", label: "S/R Tolerance %", min: 0.05, max: 2.0, step: 0.05 },
       { key: "maxZones", label: "Max Zones/Side", min: 1, max: 20, step: 1 },
       { key: "srExtend", label: "Zone Extension", min: 0, max: 100, step: 1 },
+      { key: "showVwapLine", label: "Show VWAP Line", min: 0, max: 0, step: 0, controlType: "bool" },
     ],
   };
   return descriptors[type] ?? [];
@@ -802,7 +803,7 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
     shortLabel: "Confluence",
     pane: "overlay",
     category: "Confluence",
-    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLen: 5, srLookback: 50, srTolerance: 0.3, maxZones: 8, srExtend: 20 },
+    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLen: 5, srLookback: 50, srTolerance: 0.3, maxZones: 8, srExtend: 20, showVwapLine: true },
     color: "#42a5f5",
     useLib: false,
   },
