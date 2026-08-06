@@ -537,8 +537,111 @@ export function vwapRsiConfluence(
   return result;
 }
 
+// ── VWAP+RSI + SMC Confluence ────────────────────────────────
+
+export type SMCConfluenceSignal = "bull" | "bear" | "notrade" | "counter" | null;
+
+export interface SMCConfluenceBar {
+  time: number;
+  state: ConfluenceState;        // VWAP+RSI signal state
+  smcTrend: TrendState;           // SMC market structure trend
+  atSwing: boolean;               // price is near a swing point
+  recentBreak: "BOS" | "CHoCH" | null;  // most recent structure break
+  breakDirection: "bullish" | "bearish" | null;
+  signal: SMCConfluenceSignal;
+}
+
+import type { TrendState, StructureBreak, SwingPoint } from "./indicators/smc-market-structure";
+
+export function vwapRsiSMCConfluence(
+  candles: CandleData[],
+  vwapData: IndicatorPoint[],
+  rsiData: IndicatorPoint[],
+  swings: SwingPoint[],
+  breaks: StructureBreak[],
+  smcTrend: TrendState,
+  rsiMid: number,
+  swingTolerancePct: number,
+): SMCConfluenceBar[] {
+  const result: SMCConfluenceBar[] = [];
+
+  const vwapMap = new Map<number, number>();
+  for (const v of vwapData) vwapMap.set(v.time, v.value);
+  const rsiMap = new Map<number, number>();
+  for (const r of rsiData) rsiMap.set(r.time, r.value);
+
+  // Build a time-indexed map of the most recent break at each point in time
+  let breakIdx = 0;
+  let lastBreak: StructureBreak | null = null;
+  let runningTrend: TrendState = smcTrend;
+
+  for (const c of candles) {
+    // Advance break pointer
+    while (breakIdx < breaks.length && breaks[breakIdx]!.time <= c.time) {
+      lastBreak = breaks[breakIdx]!;
+      runningTrend = lastBreak.direction === "bullish" ? 1 : -1;
+      breakIdx++;
+    }
+
+    const vwap = vwapMap.get(c.time);
+    const rsi = rsiMap.get(c.time);
+
+    if (vwap === undefined || rsi === undefined) {
+      result.push({
+        time: c.time, state: "neutral", smcTrend: runningTrend,
+        atSwing: false, recentBreak: lastBreak?.type ?? null,
+        breakDirection: lastBreak?.direction ?? null, signal: null,
+      });
+      continue;
+    }
+
+    // VWAP+RSI signal stack
+    const isBullish = c.close > vwap && rsi > rsiMid;
+    const isBearish = c.close < vwap && rsi < rsiMid;
+    const state: ConfluenceState = isBullish ? "bullish" : isBearish ? "bearish" : "neutral";
+
+    // Check proximity to swing points (within tolerance)
+    const swingTol = c.close * (swingTolerancePct / 100);
+    let atSwing = false;
+    for (const s of swings) {
+      if (Math.abs(c.close - s.price) <= swingTol) {
+        atSwing = true;
+        break;
+      }
+    }
+
+    // Determine confluence signal using SMC as the location/filter layer
+    let signal: SMCConfluenceSignal = null;
+    const trendAligned =
+      (state === "bullish" && runningTrend === 1) ||
+      (state === "bearish" && runningTrend === -1);
+    const trendAgainst =
+      (state === "bullish" && runningTrend === -1) ||
+      (state === "bearish" && runningTrend === 1);
+
+    if (trendAligned && (atSwing || lastBreak)) {
+      signal = state === "bullish" ? "bull" : "bear";
+    } else if (trendAgainst && (atSwing || lastBreak)) {
+      signal = "counter";
+    } else if (state === "neutral" && (atSwing || lastBreak)) {
+      signal = "notrade";
+    } else if (trendAligned && !atSwing && !lastBreak) {
+      // Trend aligned but no structural context yet, still a weaker signal
+      signal = state === "bullish" ? "bull" : "bear";
+    }
+
+    result.push({
+      time: c.time, state, smcTrend: runningTrend,
+      atSwing, recentBreak: lastBreak?.type ?? null,
+      breakDirection: lastBreak?.direction ?? null, signal,
+    });
+  }
+
+  return result;
+}
+
 // ── Indicator Registry (for UI) ──────────────────────────────
-export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV" | "VWAP_RSI_SR" | "SMC_MS";
+export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV" | "VWAP_RSI_SR" | "SMC_MS" | "VWAP_RSI_SMC";
 
 // Map our indicator types to the lightweight-charts-indicators library export names
 export const LIB_KEY: Partial<Record<IndicatorType, string>> = {
@@ -691,6 +794,19 @@ export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
       { key: "showSwings", label: "Show Swings", min: 0, max: 0, step: 0, controlType: "bool" },
       { key: "showBreaks", label: "Show BOS/CHoCH", min: 0, max: 0, step: 0, controlType: "bool" },
     ],
+    VWAP_RSI_SMC: [
+      { key: "vwapAnchor", label: "VWAP Anchor", min: 0, max: 0, step: 0, controlType: "select", options: ["1D", "1W", "1M", "12M"] },
+      { key: "rsiLength", label: "RSI Length", min: 2, max: 50, step: 1 },
+      { key: "rsiMid", label: "RSI Midline", min: 1, max: 99, step: 1 },
+      { key: "pivotLength", label: "SMC Pivot Length", min: 1, max: 50, step: 1 },
+      { key: "maxHistory", label: "SMC Max History", min: 10, max: 500, step: 10 },
+      { key: "swingTolerance", label: "Swing Tolerance %", min: 0.05, max: 2.0, step: 0.05 },
+      { key: "heatmapMode", label: "Heatmap Mode", min: 0, max: 0, step: 0, controlType: "select", options: ["Combined", "Impulse", "Pullback"] },
+      { key: "showVwapLine", label: "Show VWAP Line", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "showSwings", label: "Show Swings", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "showBreaks", label: "Show BOS/CHoCH", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "showHeatmap", label: "Show Heatmap", min: 0, max: 0, step: 0, controlType: "bool" },
+    ],
   };
   return descriptors[type] ?? [];
 }
@@ -824,6 +940,16 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
     category: "Smart Money Concepts",
     defaultParams: { pivotLength: 10, maxHistory: 100, heatmapMode: "Pullback", showHeatmap: true, showSwings: true, showBreaks: true },
     color: "#009688",
+    useLib: false,
+  },
+  {
+    type: "VWAP_RSI_SMC",
+    label: "VWAP+RSI SMC Confluence",
+    shortLabel: "SMC+",
+    pane: "overlay",
+    category: "Confluence",
+    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLength: 10, maxHistory: 100, swingTolerance: 0.3, heatmapMode: "Pullback", showVwapLine: true, showSwings: true, showBreaks: true, showHeatmap: true },
+    color: "#42a5f5",
     useLib: false,
   },
 ];

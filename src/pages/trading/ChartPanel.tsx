@@ -75,6 +75,7 @@ import { useChallengeLevels } from "./useChallengeLevels.ts";
 import { useIndicators } from "./useIndicators.ts";
 import { useIndicatorPaneZoom } from "./useIndicatorPaneZoom.ts";
 import { useVwapRsiConfluence } from "./useVwapRsiConfluence.ts";
+import { useVwapRsiSMCConfluence } from "./useVwapRsiSMCConfluence.ts";
 import { useSMCHeatmap } from "./useSMCHeatmap.ts";
 import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
 import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
@@ -1909,6 +1910,11 @@ export function ChartPanel({
   const smcEnabled = activeIndicators.includes("SMC_MS");
   const smcParams = indicatorParams["SMC_MS"];
   useSMCHeatmap(chartRef, candleSeriesRef, chartData, smcEnabled, smcParams, volumeData, isDark);
+
+  // VWAP+RSI + SMC Confluence: merged indicator (replaces S/R zones with market structure)
+  const smcConfluenceEnabled = activeIndicators.includes("VWAP_RSI_SMC");
+  const smcConfluenceParams = indicatorParams["VWAP_RSI_SMC"];
+  useVwapRsiSMCConfluence(chartRef, candleSeriesRef, chartData, smcConfluenceEnabled, smcConfluenceParams ?? {}, volumeData);
 
   // ── Real-time candle updates ──────────────────────────
 
