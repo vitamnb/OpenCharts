@@ -24,11 +24,11 @@ import { LineSeries, LineStyle, createSeriesMarkers } from "lightweight-charts";
 import {
   vwapAnchored,
   rsiCustom,
+  vwapRsiSMCConfluence,
   type CandleData,
 } from "../../lib/indicators.ts";
 import {
   calculateSMC,
-  vwapRsiSMCConfluence,
   type SMCConfig,
 } from "../../lib/indicators/smc-market-structure.ts";
 import { toIndicatorCandles } from "./utils.ts";

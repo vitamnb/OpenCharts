@@ -55,6 +55,7 @@ export interface SMCConfig {
   heatmapMode: "Combined" | "Impulse" | "Pullback";
   bullColor: string;        // bullish heatmap color
   bearColor: string;        // bearish heatmap color
+  neutralThreshold: number; // score magnitude below which no color is applied (0-1)
 }
 
 export const SMC_DEFAULTS: SMCConfig = {
@@ -63,6 +64,7 @@ export const SMC_DEFAULTS: SMCConfig = {
   heatmapMode: "Pullback",
   bullColor: "#009688",
   bearColor: "#ff9800",
+  neutralThreshold: 0.15,
 };
 
 // ── Core Logic ────────────────────────────────────────────────
@@ -370,6 +372,17 @@ export function calculateHeatmap(
     // Clamp score to [minScore, maxScore] for gradient
     const clampedScore = Math.max(minScore, Math.min(maxScore, score));
     const t = maxScore === minScore ? 0.5 : (clampedScore - minScore) / (maxScore - minScore);
+
+    // Neutral band: if the normalized score is near 0.5 (balanced
+    // impulse/pullback), return null so the default candle color shows
+    // through. This matches the LuxAlgo original which uses white for
+    // bars with no clear directional signal.
+    const { neutralThreshold } = config;
+    const distanceFromNeutral = Math.abs(t - 0.5);
+    if (distanceFromNeutral < neutralThreshold) {
+      result.push({ time: candles[i]!.time, color: null, impulse, pullback, score: clampedScore });
+      continue;
+    }
 
     // Interpolate between bear and bull color
     const color = lerpColor(bearColor, bullColor, t);

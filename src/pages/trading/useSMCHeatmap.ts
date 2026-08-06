@@ -58,6 +58,7 @@ export function useSMCHeatmap(
       heatmapMode: (smcParams?.heatmapMode as "Combined" | "Impulse" | "Pullback") ?? "Pullback",
       bullColor: (smcParams?.bullColor as string) ?? "#009688",
       bearColor: (smcParams?.bearColor as string) ?? "#ff9800",
+      neutralThreshold: (smcParams?.neutralThreshold as number) ?? 0.15,
     };
 
     // Calculate SMC

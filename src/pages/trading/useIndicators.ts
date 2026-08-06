@@ -4,6 +4,10 @@ import {
   LineStyle,
   LineSeries,
   HistogramSeries,
+  createSeriesMarkers,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
 } from "lightweight-charts";
 import {
   INDICATOR_REGISTRY,
@@ -37,7 +41,7 @@ export function useIndicators(
   hiddenIndicators: IndicatorType[] = [],
   volumeData?: Array<{ time: Time; value: number }>,
 ): { paneMeta: Array<{ type: IndicatorType; label: string; color: string; paneIndex: number }> } {
-  const indicatorSeriesRef = useRef<Map<string, ISeriesApi<"Line"> | ISeriesApi<"Histogram">>>(
+  const indicatorSeriesRef = useRef<Map<string, ISeriesApi<"Line"> | ISeriesApi<"Histogram"> | ISeriesMarkersPluginApi<Time>>>(
     new Map(),
   );
   const colors = isDark ? CHART_COLORS.dark : CHART_COLORS.light;
@@ -269,7 +273,9 @@ export function useIndicators(
     };
 
     // ── SMC Market Structure ────────────────────────────────────
-    // Hand-rolled rendering: swing markers, BOS/CHoCH lines+labels.
+    // Hand-rolled rendering: swing markers via createSeriesMarkers (single
+    // marker set on candle series, not one LineSeries per dot), BOS/CHoCH
+    // dashed lines, and BOS/CHoCH label markers.
     // Heatmap is applied via a separate effect (useSMCHeatmap) to avoid
     // conflicting with the main candle data effect.
     const addSMCIndicator = (type: IndicatorType, _paneIndex: number) => {
@@ -284,29 +290,29 @@ export function useIndicators(
         maxHistory,
         bullColor: app.color,
         bearColor: "#ff9800",
+        neutralThreshold: getNumParam(type, "neutralThreshold") || 0.15,
       });
 
-      // Swing point markers (small dots at swing highs/lows)
+      // Swing point markers: collect into a single SeriesMarker array and
+      // attach to the candle series via createSeriesMarkers. This is far
+      // cheaper than one LineSeries per swing point and renders proper
+      // chart markers that scale with the chart.
+      const smcMarkers: SeriesMarker<Time>[] = [];
+
       if (showSwings && result.swings.length > 0) {
         for (const sw of result.swings) {
           const isHigh = sw.type === "high";
-          const markerColor = isHigh ? "#ff9800" : app.color;
-          const dotSeries = chart.addSeries(LineSeries, {
-            color: markerColor,
-            lineWidth: 2,
-            pointMarkersVisible: true,
-            priceLineVisible: false,
-            lastValueVisible: false,
-            crosshairMarkerVisible: false,
-          }, 0);
-          dotSeries.setData([
-            { time: sw.time as Time, value: sw.price },
-          ]);
-          indicatorSeriesRef.current.set(`${type}-swing-${sw.index}-${sw.type}`, dotSeries);
+          smcMarkers.push({
+            time: sw.time as Time,
+            position: isHigh ? "aboveBar" : "belowBar",
+            color: isHigh ? "#ff9800" : app.color,
+            shape: isHigh ? "arrowDown" : "arrowUp",
+            size: 1,
+          });
         }
       }
 
-      // BOS/CHoCH levels: dashed price lines from swing to break bar
+      // BOS/CHoCH label markers (appended to the same marker set)
       if (showBreaks && result.breaks.length > 0) {
         for (const br of result.breaks) {
           const isBullish = br.direction === "bullish";
@@ -327,29 +333,36 @@ export function useIndicators(
           ]);
           indicatorSeriesRef.current.set(`${type}-break-${br.index}`, levelSeries);
 
-          // Label dot at midpoint (BOS vs CHoCH distinguished by color)
-          const midTime = Math.floor((br.levelTime + br.time) / 2);
-          const labelColor = br.type === "CHoCH" ? "#e91e63" : lineColor;
-          const labelSeries = chart.addSeries(LineSeries, {
-            color: labelColor,
-            lineWidth: 2,
-            pointMarkersVisible: true,
-            priceLineVisible: false,
-            lastValueVisible: false,
-            crosshairMarkerVisible: false,
-          }, 0);
-          labelSeries.setData([
-            { time: midTime as Time, value: br.level },
-          ]);
-          indicatorSeriesRef.current.set(`${type}-label-${br.index}`, labelSeries);
+          // BOS/CHoCH label marker at the break bar
+          smcMarkers.push({
+            time: br.time as Time,
+            position: isBullish ? "belowBar" : "aboveBar",
+            color: br.type === "CHoCH" ? "#e91e63" : lineColor,
+            shape: "circle",
+            text: br.type,
+            size: 1,
+          });
         }
+      }
+
+      // Attach all SMC markers to the candle series in one call
+      if (smcMarkers.length > 0 && candleSeriesRef.current) {
+        // Sort by time (lightweight-charts requires sorted markers)
+        smcMarkers.sort((a, b) => (a.time as number) - (b.time as number));
+        const markerPlugin = createSeriesMarkers(candleSeriesRef.current, smcMarkers);
+        indicatorSeriesRef.current.set(`${type}-markers`, markerPlugin);
       }
     };
 
-    // Remove old indicator series
-    for (const [_key, series] of indicatorSeriesRef.current) {
+    // Remove old indicator series and marker plugins
+    for (const [_key, entry] of indicatorSeriesRef.current) {
       try {
-        chart.removeSeries(series);
+        // Marker plugins have a detach() method, series have removeSeries()
+        if (entry && typeof (entry as ISeriesMarkersPluginApi<Time>).detach === "function") {
+          (entry as ISeriesMarkersPluginApi<Time>).detach();
+        } else {
+          chart.removeSeries(entry as ISeriesApi<"Line"> | ISeriesApi<"Histogram">);
+        }
       } catch {
         /* already removed */
       }
