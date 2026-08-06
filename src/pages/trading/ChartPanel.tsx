@@ -75,6 +75,7 @@ import { useChallengeLevels } from "./useChallengeLevels.ts";
 import { useIndicators } from "./useIndicators.ts";
 import { useIndicatorPaneZoom } from "./useIndicatorPaneZoom.ts";
 import { useVwapRsiConfluence } from "./useVwapRsiConfluence.ts";
+import { useSMCHeatmap } from "./useSMCHeatmap.ts";
 import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
 import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
 import { IndicatorCommandPalette } from "./IndicatorCommandPalette.tsx";
@@ -1903,6 +1904,11 @@ export function ChartPanel({
 
   // VWAP+RSI S/R Confluence: apply colours AFTER data effect so they survive
   useVwapRsiConfluence(chartRef, candleSeriesRef, chartData, confluenceEnabled, confluenceParams ?? {}, volumeData);
+
+  // SMC Market Structure: apply candle heatmap AFTER data effect
+  const smcEnabled = activeIndicators.includes("SMC_MS");
+  const smcParams = indicatorParams["SMC_MS"];
+  useSMCHeatmap(chartRef, candleSeriesRef, chartData, smcEnabled, smcParams, volumeData, isDark);
 
   // ── Real-time candle updates ──────────────────────────
 

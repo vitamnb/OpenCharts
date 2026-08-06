@@ -21,6 +21,7 @@ const CATEGORY_ORDER: IndicatorCategory[] = [
   "Volume",
   "Trend",
   "Confluence",
+  "Smart Money Concepts",
 ];
 
 export function IndicatorCommandPalette({ open, onClose, onSelect, activeIndicators }: Props) {

@@ -14,6 +14,7 @@ import {
   LIB_KEY,
 } from "../../lib/indicators.ts";
 import { plotToLineData, type LibInputConfig } from "../../lib/indicator-adapter.ts";
+import { calculateSMC } from "../../lib/indicators/smc-market-structure.ts";
 import * as IndLib from "lightweight-charts-indicators";
 import { toIndicatorCandles } from "./utils.ts";
 import { CHART_COLORS } from "./constants.ts";
@@ -267,6 +268,84 @@ export function useIndicators(
       }
     };
 
+    // ── SMC Market Structure ────────────────────────────────────
+    // Hand-rolled rendering: swing markers, BOS/CHoCH lines+labels.
+    // Heatmap is applied via a separate effect (useSMCHeatmap) to avoid
+    // conflicting with the main candle data effect.
+    const addSMCIndicator = (type: IndicatorType, _paneIndex: number) => {
+      const pivotLength = getNumParam(type, "pivotLength");
+      const maxHistory = getNumParam(type, "maxHistory");
+      const showSwings = getParam(type, "showSwings") !== false;
+      const showBreaks = getParam(type, "showBreaks") !== false;
+      const app = getAppearance(type);
+
+      const result = calculateSMC(indCandles, {
+        pivotLength,
+        maxHistory,
+        bullColor: app.color,
+        bearColor: "#ff9800",
+      });
+
+      // Swing point markers (small dots at swing highs/lows)
+      if (showSwings && result.swings.length > 0) {
+        for (const sw of result.swings) {
+          const isHigh = sw.type === "high";
+          const markerColor = isHigh ? "#ff9800" : app.color;
+          const dotSeries = chart.addSeries(LineSeries, {
+            color: markerColor,
+            lineWidth: 2,
+            pointMarkersVisible: true,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          }, 0);
+          dotSeries.setData([
+            { time: sw.time as Time, value: sw.price },
+          ]);
+          indicatorSeriesRef.current.set(`${type}-swing-${sw.index}-${sw.type}`, dotSeries);
+        }
+      }
+
+      // BOS/CHoCH levels: dashed price lines from swing to break bar
+      if (showBreaks && result.breaks.length > 0) {
+        for (const br of result.breaks) {
+          const isBullish = br.direction === "bullish";
+          const lineColor = isBullish ? app.color : "#ff9800";
+
+          // Dashed line from swing point to break bar
+          const levelSeries = chart.addSeries(LineSeries, {
+            color: lineColor,
+            lineWidth: 1,
+            lineStyle: LineStyle.Dashed,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          }, 0);
+          levelSeries.setData([
+            { time: br.levelTime as Time, value: br.level },
+            { time: br.time as Time, value: br.level },
+          ]);
+          indicatorSeriesRef.current.set(`${type}-break-${br.index}`, levelSeries);
+
+          // Label dot at midpoint (BOS vs CHoCH distinguished by color)
+          const midTime = Math.floor((br.levelTime + br.time) / 2);
+          const labelColor = br.type === "CHoCH" ? "#e91e63" : lineColor;
+          const labelSeries = chart.addSeries(LineSeries, {
+            color: labelColor,
+            lineWidth: 2,
+            pointMarkersVisible: true,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+          }, 0);
+          labelSeries.setData([
+            { time: midTime as Time, value: br.level },
+          ]);
+          indicatorSeriesRef.current.set(`${type}-label-${br.index}`, labelSeries);
+        }
+      }
+    };
+
     // Remove old indicator series
     for (const [_key, series] of indicatorSeriesRef.current) {
       try {
@@ -295,11 +374,13 @@ export function useIndicators(
         continue;
       }
 
-      // Hand-rolled fallback (shouldn't reach here anymore, all use useLib: true)
-      switch (type) {
-        default:
-          break;
+      // Hand-rolled indicators (useLib: false)
+      if (type === "SMC_MS") {
+        addSMCIndicator(type, paneIndex);
+        continue;
       }
+
+      // Unknown hand-rolled: skip
     }
 
     // Update pane metadata for React nametag rendering

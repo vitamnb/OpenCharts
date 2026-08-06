@@ -538,7 +538,7 @@ export function vwapRsiConfluence(
 }
 
 // ── Indicator Registry (for UI) ──────────────────────────────
-export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV" | "VWAP_RSI_SR";
+export type IndicatorType = "SMA" | "EMA" | "RSI" | "MACD" | "BOLL" | "ATR" | "STOCH" | "VWAP" | "SUPERTREND" | "OBV" | "VWAP_RSI_SR" | "SMC_MS";
 
 // Map our indicator types to the lightweight-charts-indicators library export names
 export const LIB_KEY: Partial<Record<IndicatorType, string>> = {
@@ -562,7 +562,8 @@ export type IndicatorCategory =
   | "Volatility"
   | "Volume"
   | "Trend"
-  | "Confluence";
+  | "Confluence"
+  | "Smart Money Concepts";
 
 export interface IndicatorConfig {
   type: IndicatorType;
@@ -681,6 +682,14 @@ export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
       { key: "maxZones", label: "Max Zones/Side", min: 1, max: 20, step: 1 },
       { key: "srExtend", label: "Zone Extension", min: 0, max: 100, step: 1 },
       { key: "showVwapLine", label: "Show VWAP Line", min: 0, max: 0, step: 0, controlType: "bool" },
+    ],
+    SMC_MS: [
+      { key: "pivotLength", label: "Pivot Length", min: 1, max: 50, step: 1 },
+      { key: "maxHistory", label: "Max History", min: 10, max: 500, step: 10 },
+      { key: "heatmapMode", label: "Heatmap Mode", min: 0, max: 0, step: 0, controlType: "select", options: ["Combined", "Impulse", "Pullback"] },
+      { key: "showHeatmap", label: "Show Heatmap", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "showSwings", label: "Show Swings", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "showBreaks", label: "Show BOS/CHoCH", min: 0, max: 0, step: 0, controlType: "bool" },
     ],
   };
   return descriptors[type] ?? [];
@@ -805,6 +814,16 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
     category: "Confluence",
     defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLen: 5, srLookback: 50, srTolerance: 0.3, maxZones: 8, srExtend: 20, showVwapLine: true },
     color: "#42a5f5",
+    useLib: false,
+  },
+  {
+    type: "SMC_MS",
+    label: "Market Structure (SMC)",
+    shortLabel: "SMC",
+    pane: "overlay",
+    category: "Smart Money Concepts",
+    defaultParams: { pivotLength: 10, maxHistory: 100, heatmapMode: "Pullback", showHeatmap: true, showSwings: true, showBreaks: true },
+    color: "#009688",
     useLib: false,
   },
 ];
