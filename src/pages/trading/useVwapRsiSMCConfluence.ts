@@ -92,7 +92,6 @@ export function useVwapRsiSMCConfluence(
   volumeData?: Array<{ time: Time; value: number }>,
 ): void {
   const markersRef = useRef<ReturnType<typeof createSeriesMarkers<Time>> | null>(null);
-  const swingSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
   const breakSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
   const vwapSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const originalDataRef = useRef<CandlestickData<Time>[]>([]);
@@ -102,11 +101,6 @@ export function useVwapRsiSMCConfluence(
     const series = candleSeriesRef.current;
 
     const cleanup = () => {
-      for (const s of swingSeriesRef.current) {
-        try { chart?.removeSeries(s); } catch { /* already removed */ }
-      }
-      swingSeriesRef.current = [];
-
       for (const s of breakSeriesRef.current) {
         try { chart?.removeSeries(s); } catch { /* already removed */ }
       }
@@ -222,29 +216,20 @@ export function useVwapRsiSMCConfluence(
     }
 
     // ── 7. Render swing point markers ──────────────────────
-    for (const s of swingSeriesRef.current) {
-      try { chart.removeSeries(s); } catch { /* */ }
-    }
-    swingSeriesRef.current = [];
-
+    // Render swing points as SeriesMarkers (one marker per swing point)
+    // instead of one LineSeries per dot. Swing highs get a downward arrow
+    // above the bar; swing lows get an upward arrow below the bar.
+    const swingMarkers: SeriesMarker<Time>[] = [];
     if (p.showSwings) {
       for (const sw of smcResult.swings) {
-        const color = sw.type === "high" ? SWING_HIGH_COLOR : SWING_LOW_COLOR;
-        const dotData: LineData[] = [
-          { time: sw.time as Time, value: sw.price },
-        ];
-
-        const dotSeries = chart.addSeries(LineSeries, {
-          color,
-          lineWidth: 1,
-          lineStyle: LineStyle.Solid,
-          pointMarkersVisible: true,
-          priceScaleId: "right",
-          priceLineVisible: false,
-          lastValueVisible: false,
-        }, 0);
-        dotSeries.setData(dotData);
-        swingSeriesRef.current.push(dotSeries);
+        const isHigh = sw.type === "high";
+        swingMarkers.push({
+          time: sw.time as Time,
+          position: isHigh ? "aboveBar" : "belowBar",
+          shape: isHigh ? "arrowDown" : "arrowUp",
+          color: isHigh ? SWING_HIGH_COLOR : SWING_LOW_COLOR,
+          size: 1,
+        });
       }
     }
 
@@ -276,8 +261,8 @@ export function useVwapRsiSMCConfluence(
       }
     }
 
-    // ── 9. Render confluence markers ──────────────────────
-    const markers: SeriesMarker<Time>[] = [];
+    // ── 9. Render confluence markers + swing markers ─────
+    const markers: SeriesMarker<Time>[] = [...swingMarkers];
 
     for (const cb of confluence) {
       if (!cb.signal) continue;

@@ -7,7 +7,6 @@ import {
   createSeriesMarkers,
   type ISeriesMarkersPluginApi,
   type SeriesMarker,
-  type Time,
 } from "lightweight-charts";
 import {
   INDICATOR_REGISTRY,

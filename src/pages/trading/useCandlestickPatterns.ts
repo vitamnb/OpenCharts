@@ -3,6 +3,25 @@
  *
  * Uses lightweight-charts-indicators candlestickPortEntries to detect
  * 44 classic Japanese candlestick patterns and render markers on the chart.
+ *
+ * The library's MarkerData type declares shapes/positions that are NOT all
+ * valid in lightweight-charts v5.2.0's SeriesMarker type:
+ *
+ *   Runtime shapes from library:  arrowDown, arrowUp, circle, square,
+ *     cross, diamond, labelDown, labelUp, triangleDown, triangleUp
+ *   Valid SeriesMarkerShape:      arrowDown, arrowUp, circle, square
+ *   Invalid shapes:              cross, diamond, labelDown, labelUp,
+ *                                triangleDown, triangleUp
+ *
+ *   Runtime positions from library: aboveBar, belowBar, inBar, top_right
+ *   Valid SeriesMarkerPosition:    aboveBar, belowBar, inBar,
+ *                                atPriceTop, atPriceBottom, atPriceMiddle
+ *   Invalid positions:             top_right
+ *
+ * We override ALL shape/position values with our sentiment-based mapping:
+ *   - Bullish patterns: green arrowUp below the bar
+ *   - Bearish patterns: red arrowDown above the bar
+ *   - Neutral patterns: yellow circle in-bar
  */
 import { useEffect, useRef } from "react";
 import type { IChartApi, ISeriesApi, CandlestickData, Time, SeriesMarker } from "lightweight-charts";
@@ -88,7 +107,12 @@ const SENTIMENT_COLORS: Record<"bullish" | "bearish" | "neutral", string> = {
 // Marker size (1 = default, 2 = larger for readability)
 const PATTERN_MARKER_SIZE = 2;
 
-// Map id -> indicator object for quick lookup
+// Map id -> indicator object for quick lookup.
+// The library's MarkerData type uses `position: string` and `shape: string`
+// because it can emit values not in SeriesMarkerShape (e.g. "labelUp",
+// "triangleUp", "diamond", "cross", "xcross") and positions not in
+// SeriesMarkerPosition (e.g. "top_right"). We override all of these
+// with our own validated shape/position, so the loose types are fine.
 type PatternCalculator = {
   calculate: (
     bars: CandleData[],
@@ -121,12 +145,6 @@ export function useCandlestickPatterns(
 
     const indCandles = toIndicatorCandles(chartData, volumeData);
 
-    // Build a price lookup so we can offset markers by a percentage of the candle range
-    const priceLookup = new Map<number, { high: number; low: number }>();
-    for (const c of chartData) {
-      priceLookup.set(c.time as number, { high: c.high, low: c.low });
-    }
-
     // Collect markers from all active patterns
     const allMarkers: SeriesMarker<Time>[] = [];
 
@@ -139,52 +157,30 @@ export function useCandlestickPatterns(
         const sentiment = SENTIMENT_MAP[patternId] ?? "neutral";
         const color = SENTIMENT_COLORS[sentiment];
         if (result.markers && result.markers.length > 0) {
-          // Override library marker styling with our sentiment-based scheme
-          // Bullish: green arrow up, below bar (points up at the candle)
-          // Bearish: red arrow down, above bar (points down at the candle)
-          // Neutral: yellow circle, below bar
+          // Override library marker styling with our sentiment-based scheme.
+          // This is necessary because the library can emit shapes ("labelUp",
+          // "triangleUp", "diamond", "cross", "xcross") and positions
+          // ("top_right") that are NOT valid in lightweight-charts v5's
+          // SeriesMarkerShape/SeriesMarkerBarPosition types.
           for (const m of result.markers) {
             const t = m.time as number;
-            const candle = priceLookup.get(t);
-            const shape = sentiment === "bullish" ? "arrowUp" : sentiment === "bearish" ? "arrowDown" : "circle";
 
-            if (candle) {
-              // Position marker at a price offset from the candle, giving breathing room
-              const range = candle.high - candle.low;
-              const offset = range * 0.2; // 20% of candle range as gap
-              if (sentiment === "bearish") {
-                allMarkers.push({
-                  time: t as Time,
-                  position: "atPriceTop",
-                  shape: shape as "arrowUp" | "arrowDown" | "circle",
-                  color,
-                  text: m.text,
-                  size: PATTERN_MARKER_SIZE,
-                  price: candle.high + offset,
-                } as SeriesMarker<Time>);
-              } else {
-                allMarkers.push({
-                  time: t as Time,
-                  position: "atPriceBottom",
-                  shape: shape as "arrowUp" | "arrowDown" | "circle",
-                  color,
-                  text: m.text,
-                  size: PATTERN_MARKER_SIZE,
-                  price: candle.low - offset,
-                } as SeriesMarker<Time>);
-              }
-            } else {
-              // Fallback to bar-relative positioning if candle not found
-              const position = sentiment === "bearish" ? "aboveBar" : "belowBar";
-              allMarkers.push({
-                time: t as Time,
-                position: position as "aboveBar" | "belowBar" | "inBar",
-                shape: shape as "arrowUp" | "arrowDown" | "circle",
-                color,
-                text: m.text,
-                size: PATTERN_MARKER_SIZE,
-              } as SeriesMarker<Time>);
-            }
+            // Bullish: green arrowUp below bar (arrow pointing up at the buy signal)
+            // Bearish: red arrowDown above bar (arrow pointing down at the sell signal)
+            // Neutral: yellow circle inside the bar
+            const position: "aboveBar" | "belowBar" | "inBar" =
+              sentiment === "bullish" ? "belowBar" : sentiment === "bearish" ? "aboveBar" : "inBar";
+            const shape: "arrowUp" | "arrowDown" | "circle" =
+              sentiment === "bullish" ? "arrowUp" : sentiment === "bearish" ? "arrowDown" : "circle";
+
+            allMarkers.push({
+              time: t as Time,
+              position,
+              shape,
+              color,
+              text: m.text,
+              size: PATTERN_MARKER_SIZE,
+            });
           }
         }
       } catch {
