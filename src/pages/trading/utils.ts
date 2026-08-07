@@ -1,6 +1,6 @@
 import type { CandlestickData, Time } from "lightweight-charts";
 import type { CandleData } from "../../lib/indicators.ts";
-import { KNOWN_CURRENCIES } from "./constants.ts";
+import { KNOWN_CURRENCIES, TF_INTERVAL_MS } from "./constants.ts";
 import type { Timeframe } from "./constants.ts";
 
 /** Derive pip (decimal) precision from symbolInfo.tickSize or symbol name */
@@ -106,4 +106,87 @@ export function getCandleBucketTime(timestampMs: number, tf: Timeframe): number 
   };
   const ms = intervals[tf];
   return Math.floor((Math.floor(timestampMs / ms) * ms) / 1000);
+}
+
+/** Aggregate lower-timeframe candles into higher-timeframe candles.
+ *
+ *  Overload 1: specify target timeframe as a Timeframe string.
+ *  Input/output times are assumed to be unix seconds.
+ */
+export function aggregateCandles(
+  candles: CandlestickData<Time>[],
+  targetTf: Timeframe,
+): CandlestickData<Time>[] {
+  if (candles.length === 0) return [];
+
+  type BucketRow = CandlestickData<Time> & { volume: number };
+  const bucketMs = TF_INTERVAL_MS[targetTf];
+  const buckets = new Map<number, BucketRow>();
+
+  for (const c of candles) {
+    const t = typeof c.time === "string" ? Date.parse(c.time) / 1000 : (c.time as number);
+    const bucketS = Math.floor((Math.floor(t * 1000 / bucketMs) * bucketMs) / 1000);
+    const cvol = (c as CandlestickData<Time> & { volume?: number }).volume ?? 0;
+
+    const existing = buckets.get(bucketS);
+    if (!existing) {
+      buckets.set(bucketS, {
+        time: bucketS as Time,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: cvol,
+      });
+    } else {
+      existing.high = Math.max(existing.high, c.high);
+      existing.low = Math.min(existing.low, c.low);
+      existing.close = c.close;
+      existing.volume += cvol;
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => (a.time as number) - (b.time as number));
+}
+
+/** Aggregate lower-timeframe CandleData into higher-timeframe CandleData.
+ *
+ *  Overload 2: specify target timeframe in milliseconds and current timeframe in
+ *  milliseconds. Uses bucket alignment math consistent with getCandleBucketTime.
+ *  Input `lowerCandles` times are unix seconds (CandleData format).
+ *  Returns CandleData[] aggregated to the target timeframe.
+ *  If targetMs <= currentMs or no aggregation needed, returns input as-is.
+ */
+export function aggregateCandlesForSMC(
+  lowerCandles: CandleData[],
+  targetMs: number,
+  currentMs: number,
+): CandleData[] {
+  if (targetMs <= currentMs || lowerCandles.length === 0) return lowerCandles;
+
+  // Map from bucket start (unix seconds) -> aggregated candle
+  const buckets = new Map<number, CandleData>();
+
+  for (const c of lowerCandles) {
+    const bucketS = Math.floor(Math.floor(c.time * 1000 / targetMs) * targetMs / 1000);
+
+    const existing = buckets.get(bucketS);
+    if (!existing) {
+      buckets.set(bucketS, {
+        time: bucketS,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume ?? 0,
+      });
+    } else {
+      existing.high = Math.max(existing.high, c.high);
+      existing.low = Math.min(existing.low, c.low);
+      existing.close = c.close;
+      existing.volume = (existing.volume ?? 0) + (c.volume ?? 0);
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
 }

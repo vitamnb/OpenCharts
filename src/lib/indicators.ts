@@ -545,10 +545,12 @@ export interface SMCConfluenceBar {
   time: number;
   state: ConfluenceState;        // VWAP+RSI signal state
   smcTrend: TrendState;           // SMC market structure trend
-  atSwing: boolean;               // price is near a swing point
+  atSwing: boolean;               // price is near any swing point
   recentBreak: "BOS" | "CHoCH" | null;  // most recent structure break
   breakDirection: "bullish" | "bearish" | null;
   signal: SMCConfluenceSignal;
+  strength: "strong" | "weak" | null; // strong = fresh break/swing; weak = trend-aligned only
+  nearestSwingDistancePct: number | null; // distance to closest swing high/low as % of price
 }
 
 import type { TrendState, StructureBreak, SwingPoint } from "./indicators/smc-market-structure";
@@ -562,6 +564,9 @@ export function vwapRsiSMCConfluence(
   smcTrend: TrendState,
   rsiMid: number,
   swingTolerancePct: number,
+  breakLookbackBars = 5,
+  swingLookbackBars = 15,
+  _smcCandles?: CandleData[],
 ): SMCConfluenceBar[] {
   const result: SMCConfluenceBar[] = [];
 
@@ -591,6 +596,8 @@ export function vwapRsiSMCConfluence(
         time: c.time, state: "neutral", smcTrend: runningTrend,
         atSwing: false, recentBreak: lastBreak?.type ?? null,
         breakDirection: lastBreak?.direction ?? null, signal: null,
+        strength: null,
+        nearestSwingDistancePct: null,
       });
       continue;
     }
@@ -600,40 +607,48 @@ export function vwapRsiSMCConfluence(
     const isBearish = c.close < vwap && rsi < rsiMid;
     const state: ConfluenceState = isBullish ? "bullish" : isBearish ? "bearish" : "neutral";
 
-    // Check proximity to swing points (within tolerance)
-    const swingTol = c.close * (swingTolerancePct / 100);
-    let atSwing = false;
-    for (const s of swings) {
-      if (Math.abs(c.close - s.price) <= swingTol) {
-        atSwing = true;
-        break;
-      }
-    }
-
-    // Determine confluence signal using SMC as the location/filter layer
+    // Determine confluence signal using SMC as the location/filter layer.
+    // A signal only fires when VWAP+RSI agrees with a *fresh* structural
+    // event. "Fresh" means within a small lookback window so old breaks and
+    // distant swings don't pollute the chart.
     let signal: SMCConfluenceSignal = null;
+    let strength: SMCConfluenceBar["strength"] = null;
+
+    const barMs = candles.length >= 2 ? candles[1]!.time - candles[0]!.time : 0;
+    const freshBreak =
+      lastBreak !== null &&
+      barMs > 0 &&
+      c.time - lastBreak.time <= breakLookbackBars * barMs;
+
+    const swingTol = c.close * (swingTolerancePct / 100);
+    const recentSwings = swings.slice(-swingLookbackBars);
+    const atSwing = recentSwings.some((s) => Math.abs(c.close - s.price) <= swingTol);
+
     const trendAligned =
       (state === "bullish" && runningTrend === 1) ||
       (state === "bearish" && runningTrend === -1);
-    const trendAgainst =
-      (state === "bullish" && runningTrend === -1) ||
-      (state === "bearish" && runningTrend === 1);
 
-    if (trendAligned && (atSwing || lastBreak)) {
+    if (trendAligned && (freshBreak || atSwing)) {
       signal = state === "bullish" ? "bull" : "bear";
-    } else if (trendAgainst && (atSwing || lastBreak)) {
-      signal = "counter";
-    } else if (state === "neutral" && (atSwing || lastBreak)) {
-      signal = "notrade";
-    } else if (trendAligned && !atSwing && !lastBreak) {
-      // Trend aligned but no structural context yet, still a weaker signal
-      signal = state === "bullish" ? "bull" : "bear";
+      strength = "strong";
+    }
+
+    // Compute nearest swing distance as % of current price
+    let nearestSwingDistancePct: number | null = null;
+    if (recentSwings.length > 0) {
+      let minDist = Infinity;
+      for (const sw of recentSwings) {
+        const dist = Math.abs(c.close - sw.price);
+        if (dist < minDist) minDist = dist;
+      }
+      nearestSwingDistancePct = c.close !== 0 ? (minDist / c.close) * 100 : null;
     }
 
     result.push({
       time: c.time, state, smcTrend: runningTrend,
       atSwing, recentBreak: lastBreak?.type ?? null,
-      breakDirection: lastBreak?.direction ?? null, signal,
+      breakDirection: lastBreak?.direction ?? null, signal, strength,
+      nearestSwingDistancePct,
     });
   }
 
@@ -801,12 +816,16 @@ export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
       { key: "rsiMid", label: "RSI Midline", min: 1, max: 99, step: 1 },
       { key: "pivotLength", label: "SMC Pivot Length", min: 1, max: 50, step: 1 },
       { key: "maxHistory", label: "SMC Max History", min: 10, max: 500, step: 10 },
+      { key: "structureTimeframe", label: "Structure TF", min: 0, max: 0, step: 0, controlType: "select", options: ["", "1h", "4h", "1d", "1w"] },
+      { key: "breakLookback", label: "Break Lookback (bars)", min: 1, max: 50, step: 1 },
+      { key: "swingLookback", label: "Swing Lookback (bars)", min: 1, max: 100, step: 1 },
       { key: "swingTolerance", label: "Swing Tolerance %", min: 0.05, max: 2.0, step: 0.05 },
       { key: "heatmapMode", label: "Heatmap Mode", min: 0, max: 0, step: 0, controlType: "select", options: ["Combined", "Impulse", "Pullback"] },
       { key: "showVwapLine", label: "Show VWAP Line", min: 0, max: 0, step: 0, controlType: "bool" },
       { key: "showSwings", label: "Show Swings", min: 0, max: 0, step: 0, controlType: "bool" },
       { key: "showBreaks", label: "Show BOS/CHoCH", min: 0, max: 0, step: 0, controlType: "bool" },
       { key: "showHeatmap", label: "Show Heatmap", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "showWeakSignals", label: "Show Weak Signals", min: 0, max: 0, step: 0, controlType: "bool" },
     ],
   };
   return descriptors[type] ?? [];
@@ -949,7 +968,7 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
     shortLabel: "SMC+",
     pane: "overlay",
     category: "Confluence",
-    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLength: 10, maxHistory: 100, swingTolerance: 0.3, heatmapMode: "Pullback", showVwapLine: true, showSwings: true, showBreaks: true, showHeatmap: true },
+    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLength: 10, maxHistory: 100, structureTimeframe: "", breakLookback: 5, swingLookback: 15, swingTolerance: 0.3, heatmapMode: "Pullback", showVwapLine: true, showSwings: true, showBreaks: true, showHeatmap: false, showWeakSignals: false },
     color: "#42a5f5",
     useLib: false,
   },

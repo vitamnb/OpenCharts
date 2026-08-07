@@ -31,7 +31,8 @@ import {
   calculateSMC,
   type SMCConfig,
 } from "../../lib/indicators/smc-market-structure.ts";
-import { toIndicatorCandles } from "./utils.ts";
+import { toIndicatorCandles, aggregateCandlesForSMC } from "./utils.ts";
+import { TF_INTERVAL_MS, type Timeframe } from "./constants.ts";
 
 export interface VwapRsiSmcParams {
   vwapAnchor: string;
@@ -45,6 +46,14 @@ export interface VwapRsiSmcParams {
   showSwings: boolean;
   showBreaks: boolean;
   showHeatmap: boolean;
+  showWeakSignals: boolean;
+  breakLookback: number;
+  swingLookback: number;
+  /** Higher timeframe for SMC structure analysis (e.g. "4h").
+   *  When set and higher than the chart timeframe, candles are aggregated
+   *  to this TF for swing/BOS/CHoCH detection, while VWAP/RSI stay on the
+   *  chart timeframe. Empty string or same-as-chart = no HTF aggregation. */
+  structureTimeframe: string;
 }
 
 const DEFAULT_PARAMS: VwapRsiSmcParams = {
@@ -59,14 +68,17 @@ const DEFAULT_PARAMS: VwapRsiSmcParams = {
   showSwings: true,
   showBreaks: true,
   showHeatmap: true,
+  showWeakSignals: false,
+  breakLookback: 5,
+  swingLookback: 15,
+  structureTimeframe: "",
 };
 
 // Confluence candle colours
 const BULL_COLOR = "#0ecb81";
 const BEAR_COLOR = "#f6465d";
-const NEUTRAL_COLOR = "#ffffff";
-
-// VWAP line colour
+const NOTRADE_MARKER = "#ff9800";
+const COUNTER_MARKER = "#f0b90b";
 const VWAP_COLOR = "#42a5f5";
 
 // Swing point colours
@@ -80,8 +92,6 @@ const CHOCH_COLOR = "#e040fb";
 // Marker colours
 const BULL_MARKER = "#0ecb81";
 const BEAR_MARKER = "#f6465d";
-const NOTRADE_MARKER = "#ff9800";
-const COUNTER_MARKER = "#f0b90b";
 
 export function useVwapRsiSMCConfluence(
   chartRef: React.RefObject<IChartApi | null>,
@@ -89,7 +99,8 @@ export function useVwapRsiSMCConfluence(
   chartData: CandlestickData<Time>[],
   enabled: boolean,
   params: Partial<VwapRsiSmcParams>,
-  volumeData?: Array<{ time: Time; value: number }>,
+  volumeData: Array<{ time: Time; value: number }> | undefined,
+  timeframe?: Timeframe,
 ): void {
   const markersRef = useRef<ReturnType<typeof createSeriesMarkers<Time>> | null>(null);
   const breakSeriesRef = useRef<ISeriesApi<"Line">[]>([]);
@@ -136,6 +147,16 @@ export function useVwapRsiSMCConfluence(
 
     originalDataRef.current = chartData;
 
+    // ── HTF aggregation ──────────────────────────────────
+    // If structureTimeframe is set and higher than the chart timeframe,
+    // aggregate chart candles to that TF for SMC structure analysis.
+    const currentMs = timeframe ? (TF_INTERVAL_MS[timeframe] ?? 0) : 0;
+    const stfMs = p.structureTimeframe ? (TF_INTERVAL_MS[p.structureTimeframe as Timeframe] ?? 0) : 0;
+    const useHTF = stfMs > 0 && currentMs > 0 && stfMs > currentMs;
+    const smcCandles: CandleData[] = useHTF
+      ? aggregateCandlesForSMC(indCandles, stfMs, currentMs)
+      : indCandles;
+
     // ── 1. Calculate VWAP ──────────────────────────────────
     const vwapData = vwapAnchored(
       indCandles,
@@ -151,7 +172,7 @@ export function useVwapRsiSMCConfluence(
       maxHistory: p.maxHistory,
       heatmapMode: p.heatmapMode,
     };
-    const smcResult = calculateSMC(indCandles, smcConfig);
+    const smcResult = calculateSMC(smcCandles, smcConfig);
 
     // ── 4. Calculate SMC Confluence ────────────────────────
     const confluence = vwapRsiSMCConfluence(
@@ -163,9 +184,12 @@ export function useVwapRsiSMCConfluence(
       smcResult.trend,
       p.rsiMid,
       p.swingTolerance,
+      p.breakLookback,
+      p.swingLookback,
+      smcCandles !== indCandles ? smcCandles : undefined,
     );
 
-    // ── 5. Apply candle colours (heatmap or confluence) ─────
+    // ── 5. Apply candle colours (heatmap only or signal only) ─────
     const confluenceMap = new Map(confluence.map(c => [c.time, c]));
     const heatmapMap = new Map(smcResult.heatmap.map(h => [h.time, h]));
 
@@ -176,13 +200,14 @@ export function useVwapRsiSMCConfluence(
       let color: string | undefined;
 
       if (p.showHeatmap && hm?.color) {
-        // Use SMC heatmap color as base
+        // SMC heatmap color as base
         color = hm.color;
-      } else if (cb) {
-        // Fall back to confluence state coloring
-        color = cb.state === "bullish" ? BULL_COLOR
-          : cb.state === "bearish" ? BEAR_COLOR
-          : NEUTRAL_COLOR;
+      } else if (cb?.signal) {
+        // Only colour candles that actually have a confluence signal
+        color = cb.signal === "bull" ? BULL_COLOR
+          : cb.signal === "bear" ? BEAR_COLOR
+          : cb.signal === "counter" ? COUNTER_MARKER
+          : NOTRADE_MARKER;
       }
 
       if (!color) return c;
@@ -266,6 +291,7 @@ export function useVwapRsiSMCConfluence(
 
     for (const cb of confluence) {
       if (!cb.signal) continue;
+      if (cb.strength !== "strong" && !p.showWeakSignals) continue;
 
       const t = cb.time as Time;
       let marker: SeriesMarker<Time>;
@@ -277,8 +303,7 @@ export function useVwapRsiSMCConfluence(
             position: "belowBar",
             shape: "arrowUp",
             color: BULL_MARKER,
-            text: "BULL",
-            size: 1,
+            size: 2,
           };
           break;
         case "bear":
@@ -287,18 +312,7 @@ export function useVwapRsiSMCConfluence(
             position: "aboveBar",
             shape: "arrowDown",
             color: BEAR_MARKER,
-            text: "BEAR",
-            size: 1,
-          };
-          break;
-        case "notrade":
-          marker = {
-            time: t,
-            position: "inBar",
-            shape: "circle",
-            color: NOTRADE_MARKER,
-            text: "X",
-            size: 1,
+            size: 2,
           };
           break;
         case "counter":
@@ -307,8 +321,7 @@ export function useVwapRsiSMCConfluence(
             position: "aboveBar",
             shape: "circle",
             color: COUNTER_MARKER,
-            text: "!",
-            size: 1,
+            size: 2,
           };
           break;
         default:
@@ -327,5 +340,5 @@ export function useVwapRsiSMCConfluence(
     }
 
     return cleanup;
-  }, [chartRef, candleSeriesRef, chartData, enabled, params, volumeData]);
+  }, [chartRef, candleSeriesRef, chartData, enabled, params, volumeData, timeframe]);
 }

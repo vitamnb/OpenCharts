@@ -1914,7 +1914,7 @@ export function ChartPanel({
   // VWAP+RSI + SMC Confluence: merged indicator (replaces S/R zones with market structure)
   const smcConfluenceEnabled = activeIndicators.includes("VWAP_RSI_SMC");
   const smcConfluenceParams = indicatorParams["VWAP_RSI_SMC"];
-  useVwapRsiSMCConfluence(chartRef, candleSeriesRef, chartData, smcConfluenceEnabled, smcConfluenceParams ?? {}, volumeData);
+  useVwapRsiSMCConfluence(chartRef, candleSeriesRef, chartData, smcConfluenceEnabled, smcConfluenceParams ?? {}, volumeData, timeframe);
 
   // ── Real-time candle updates ──────────────────────────
 
