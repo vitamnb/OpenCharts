@@ -54,6 +54,10 @@ export interface VwapRsiSmcParams {
    *  to this TF for swing/BOS/CHoCH detection, while VWAP/RSI stay on the
    *  chart timeframe. Empty string or same-as-chart = no HTF aggregation. */
   structureTimeframe: string;
+  useAtrTolerance: boolean;
+  atrMultiplier: number;
+  chopFilter: boolean;
+  requireHtfAlignment: boolean;
 }
 
 const DEFAULT_PARAMS: VwapRsiSmcParams = {
@@ -72,6 +76,10 @@ const DEFAULT_PARAMS: VwapRsiSmcParams = {
   breakLookback: 5,
   swingLookback: 15,
   structureTimeframe: "",
+  useAtrTolerance: true,
+  atrMultiplier: 0.5,
+  chopFilter: true,
+  requireHtfAlignment: true,
 };
 
 // Confluence candle colours
@@ -187,6 +195,12 @@ export function useVwapRsiSMCConfluence(
       p.breakLookback,
       p.swingLookback,
       smcCandles !== indCandles ? smcCandles : undefined,
+      {
+        useAtrTolerance: p.useAtrTolerance,
+        atrMultiplier: p.atrMultiplier,
+        chopFilter: p.chopFilter,
+        requireHtfAlignment: p.requireHtfAlignment,
+      },
     );
 
     // ── 5. Apply candle colours (heatmap only or signal only) ─────
