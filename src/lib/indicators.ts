@@ -571,10 +571,12 @@ export interface VwapRsiSmcParams {
   showWeakSignals: boolean;
   breakLookback: number;
   swingLookback: number;
+  sweepLookforward: number;
   structureTimeframe: string;
   useAtrTolerance: boolean;
   atrMultiplier: number;
   chopFilter: boolean;
+  chopAtrRatio: number;
   requireHtfAlignment: boolean;
 }
 
@@ -690,6 +692,8 @@ export function vwapRsiSMCConfluence(
     useAtrTolerance: true,
     atrMultiplier: 0.5,
     chopFilter: true,
+    chopAtrRatio: 0.001,
+    sweepLookforward: 3,
     requireHtfAlignment: true,
     ..._params,
   };
@@ -722,7 +726,7 @@ export function vwapRsiSMCConfluence(
     if (breakBarIdx === undefined) continue;
 
     // Check the next 1-3 bars after the break
-    for (let offset = 1; offset <= 3; offset++) {
+    for (let offset = 1; offset <= p.sweepLookforward; offset++) {
       const nextIdx = breakBarIdx + offset;
       if (nextIdx >= candles.length) break;
       const nextBar = candles[nextIdx]!;
@@ -754,6 +758,24 @@ export function vwapRsiSMCConfluence(
   // HTF break tracking: since breaks/swings are computed from smcCandles,
   // the last break direction IS the HTF trend when HTF is active.
   let htfLastBreakDirection: "bullish" | "bearish" | null = null;
+  let swingPtr = 0; // pointer into swings[] for look-ahead-free recent swings
+
+  // Median bar interval (robust against gaps from weekends, low liquidity)
+  // Computed once before the main loop
+  let barMs = 0;
+  if (candles.length >= 3) {
+    const diffs: number[] = [];
+    for (let i = 1; i < candles.length; i++) {
+      const d = candles[i]!.time - candles[i - 1]!.time;
+      if (d > 0) diffs.push(d);
+    }
+    if (diffs.length > 0) {
+      diffs.sort((a, b) => a - b);
+      barMs = diffs[Math.floor(diffs.length / 2)]!;
+    }
+  } else if (candles.length >= 2) {
+    barMs = candles[1]!.time - candles[0]!.time;
+  }
 
   for (let ci = 0; ci < candles.length; ci++) {
     const c = candles[ci]!;
@@ -770,6 +792,11 @@ export function vwapRsiSMCConfluence(
       }
 
       breakIdx++;
+    }
+
+    // Clear HTF direction when structureTimeframe is empty (no stale phantom trend)
+    if (!_smcCandles || _smcCandles.length === 0) {
+      htfLastBreakDirection = null;
     }
 
     const vwap = vwapMap.get(c.time);
@@ -808,7 +835,7 @@ export function vwapRsiSMCConfluence(
       // Chop conditions: ADX < 20 OR ATR/price < 0.1%
       const adxChop = adxVal !== undefined && adxVal < 20;
       const atrChop = atrRatio !== undefined && c.close > 0
-        ? (atrRatio / c.close) < 0.001
+        ? (atrRatio / c.close) < p.chopAtrRatio
         : false;
       if (adxChop || atrChop) {
         // Choppy market, suppress signal
@@ -837,13 +864,16 @@ export function vwapRsiSMCConfluence(
     let strength: SMCConfluenceBar["strength"] = null;
     let isSweep = false;
 
-    const barMs = candles.length >= 2 ? candles[1]!.time - candles[0]!.time : 0;
     const freshBreak =
       lastBreak !== null &&
       barMs > 0 &&
       c.time - lastBreak.time <= breakLookbackBars * barMs;
 
-    const recentSwings = swings.slice(-swingLookbackBars);
+    // Look-ahead-free recent swings: only include swings at or before current bar time
+    while (swingPtr < swings.length && swings[swingPtr]!.time <= c.time) {
+      swingPtr++;
+    }
+    const recentSwings = swings.slice(Math.max(0, swingPtr - swingLookbackBars), swingPtr);
     const atSwing = recentSwings.some((s) => Math.abs(c.close - s.price) <= swingTol);
 
     const trendAligned =
@@ -1124,10 +1154,12 @@ export function getParamDescriptors(type: IndicatorType): ParamDescriptor[] {
       { key: "structureTimeframe", label: "Structure TF", min: 0, max: 0, step: 0, controlType: "select", options: ["", "1h", "4h", "1d", "1w"] },
       { key: "breakLookback", label: "Break Lookback (bars)", min: 1, max: 50, step: 1 },
       { key: "swingLookback", label: "Swing Lookback (bars)", min: 1, max: 100, step: 1 },
+      { key: "sweepLookforward", label: "Sweep Lookforward (bars)", min: 1, max: 10, step: 1 },
       { key: "swingTolerance", label: "Swing Tolerance %", min: 0.05, max: 2.0, step: 0.05 },
       { key: "useAtrTolerance", label: "ATR Swing Tolerance", min: 0, max: 0, step: 0, controlType: "bool" },
       { key: "atrMultiplier", label: "ATR Multiplier", min: 0.1, max: 2.0, step: 0.1 },
       { key: "chopFilter", label: "Chop Filter", min: 0, max: 0, step: 0, controlType: "bool" },
+      { key: "chopAtrRatio", label: "Chop ATR Ratio", min: 0.0001, max: 0.01, step: 0.0001 },
       { key: "requireHtfAlignment", label: "HTF Alignment", min: 0, max: 0, step: 0, controlType: "bool" },
       { key: "heatmapMode", label: "Heatmap Mode", min: 0, max: 0, step: 0, controlType: "select", options: ["Combined", "Impulse", "Pullback"] },
       { key: "showVwapLine", label: "Show VWAP Line", min: 0, max: 0, step: 0, controlType: "bool" },
@@ -1277,7 +1309,7 @@ export const INDICATOR_REGISTRY: IndicatorConfig[] = [
     shortLabel: "SMC+",
     pane: "overlay",
     category: "Confluence",
-    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLength: 10, maxHistory: 100, structureTimeframe: "", breakLookback: 5, swingLookback: 15, swingTolerance: 0.3, heatmapMode: "Pullback", showVwapLine: true, showSwings: true, showBreaks: true, showHeatmap: false, showWeakSignals: false, useAtrTolerance: true, atrMultiplier: 0.5, chopFilter: true, requireHtfAlignment: true },
+    defaultParams: { vwapAnchor: "1D", rsiLength: 21, rsiMid: 50, pivotLength: 10, maxHistory: 100, structureTimeframe: "", breakLookback: 5, swingLookback: 15, sweepLookforward: 3, swingTolerance: 0.3, heatmapMode: "Pullback", showVwapLine: true, showSwings: true, showBreaks: true, showHeatmap: false, showWeakSignals: false, useAtrTolerance: true, atrMultiplier: 0.5, chopFilter: true, chopAtrRatio: 0.001, requireHtfAlignment: true },
     color: "#42a5f5",
     useLib: false,
   },
