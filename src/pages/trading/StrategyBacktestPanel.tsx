@@ -467,7 +467,8 @@ function BacktestTradesTable({ trades }: { trades: JesseTrade[] }) {
             return (
               <tr key={t.id} className="hover:bg-secondary/30">
                 <td className="text-muted-foreground">
-                  {new Date(t.opened_at).toLocaleDateString(undefined, {
+                  {new Date(t.opened_at).toLocaleDateString("en-GB", {
+                    timeZone: "UTC",
                     month: "short",
                     day: "numeric",
                     hour: "2-digit",
@@ -476,7 +477,8 @@ function BacktestTradesTable({ trades }: { trades: JesseTrade[] }) {
                 </td>
                 <td className="text-muted-foreground">
                   {t.closed_at
-                    ? new Date(t.closed_at).toLocaleDateString(undefined, {
+                    ? new Date(t.closed_at).toLocaleDateString("en-GB", {
+                        timeZone: "UTC",
                         month: "short",
                         day: "numeric",
                         hour: "2-digit",

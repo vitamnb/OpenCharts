@@ -36,10 +36,10 @@ import {
   detectCrossings,
   playAlertBeep,
 } from "../../lib/chart-plugins/drawing-tools/line-alerts.ts";
-import { tradesToMarkers } from "../../lib/backtest-markers";
+import { tradesToMarkers, tradesToShading } from "../../lib/backtest-markers";
 import { BacktestShadingPlugin } from "../../lib/chart-plugins/backtest-shading/backtest-shading";
-import { tradesToShading } from "../../lib/backtest-markers";
 import type { JesseTrade } from "../../services/api/jesse";
+import { fetchCandles } from "../../services/kucoin/rest";
 import { DrawingToolsManager } from "../../lib/chart-plugins/drawing-tools/manager.ts";
 import { CrosshairHighlightPrimitive } from "../../lib/chart-plugins/highlight-bar-crosshair/highlight-bar-crosshair.ts";
 import { SessionBreaks } from "../../lib/chart-plugins/session-breaks/session-breaks.ts";
@@ -1138,6 +1138,8 @@ export function ChartPanel({
 }: ChartPanelProps) {
   const queryClient = useQueryClient();
   const lastGapRefetchAtRef = useRef<number>(0);
+  // When set, the chart will scroll to this time range after the next setData
+  const pendingScrollRef = useRef<{ from: number; to: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -1453,16 +1455,69 @@ export function ChartPanel({
     };
   }, [replayTradeEvents, timeframe]);
 
-  // ── Backtest trade markers ────────────────────────────────
+  // ── Backtest trade markers + historical candle fetch ─────────
   useEffect(() => {
     const series = candleSeriesRef.current;
+    const chart = chartRef.current;
     if (!series) return;
     const btMarkers = tradesToMarkers(backtestTrades);
     const plugin = createSeriesMarkers(series, btMarkers);
+
+    // When backtest trades are loaded, fetch historical candles from KuCoin
+    // so the chart can display the period where the trades occurred.
+    if (btMarkers.length > 0 && chart) {
+      const firstTime = btMarkers[0].time as number;
+      const lastTime = btMarkers[btMarkers.length - 1].time as number;
+      const pad = Math.round((lastTime - firstTime) * 0.05);
+      const startAt = firstTime - pad;
+      const endAt = lastTime + pad;
+
+      // Set pending scroll so the next setData cycle scrolls to the backtest range
+      pendingScrollRef.current = { from: firstTime - pad, to: lastTime + pad };
+
+      // Fetch 15m candles for the backtest period (KuCoin max 1500 per request)
+      // We need multiple requests to cover ~7 months of 15m candles (~20k candles)
+      const tf = timeframeRef.current || "15m";
+      const intervalSec = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400 }[tf] ?? 900;
+      const totalCandles = Math.ceil((endAt - startAt) / intervalSec);
+      const batches = Math.ceil(totalCandles / 1500);
+      let allCandles: Candle[] = [];
+
+      (async () => {
+        for (let i = 0; i < batches; i++) {
+          const batchStart = startAt + i * 1500 * intervalSec;
+          const batchEnd = Math.min(batchStart + 1500 * intervalSec, endAt);
+          try {
+            const kcCandles = await fetchCandles(selectedSymbol, tf, batchStart, batchEnd);
+            const mapped: Candle[] = kcCandles.map(c => ({
+              time: c.time as Time,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+            }));
+            allCandles = [...allCandles, ...mapped];
+          } catch (e) {
+            console.warn(`Backtest candle fetch batch ${i} failed:`, e);
+          }
+        }
+        if (allCandles.length > 0) {
+          setHistoricalExtra(prev => {
+            // Merge with existing historical candles, dedup by time
+            const existing = new Map(prev.map(c => [c.time as number, c]));
+            for (const c of allCandles) existing.set(c.time as number, c);
+            return Array.from(existing.values()).sort((a, b) => (a.time as number) - (b.time as number));
+          });
+          // pendingScrollRef will handle the scroll on the next setData cycle
+        }
+      })();
+    }
+
     return () => {
       plugin.detach();
     };
-  }, [backtestTrades]);
+  }, [backtestTrades, selectedSymbol]);
 
   // ── Backtest hold-period shading ─────────────────────────
   const shadingPluginRef = useRef<BacktestShadingPlugin | null>(null);
@@ -1893,6 +1948,14 @@ export function ChartPanel({
     if (!isNewChart) {
       // Periodic refetch — preserve viewport, re-apply latest live data.
       reapplyLive(buffered, ctx);
+      // If a backtest scroll is pending, apply it after data is set
+      if (pendingScrollRef.current) {
+        const scroll = pendingScrollRef.current;
+        chartRef.current?.timeScale().setVisibleRange({
+          from: scroll.from as Time,
+          to: scroll.to as Time,
+        });
+      }
       return;
     }
 
@@ -1900,6 +1963,16 @@ export function ChartPanel({
     lastLoadKeyRef.current = loadKey;
     liveCandleTsRef.current = 0;
     replayBufferedLive(buffered, chartData, ctx);
+
+    // If a backtest scroll is pending, apply it after data is set
+    if (pendingScrollRef.current) {
+      const scroll = pendingScrollRef.current;
+      chartRef.current?.timeScale().setVisibleRange({
+        from: scroll.from as Time,
+        to: scroll.to as Time,
+      });
+    }
+
     return scheduleStaleRefetch(chartData, ctx);
   }, [chartData, volumeData, selectedSymbol, timeframe, makeRtCtx]);
 
