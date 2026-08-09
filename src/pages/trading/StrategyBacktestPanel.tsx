@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Square, RefreshCw } from "lucide-react";
+import { Play, Square, RefreshCw, FolderOpen } from "lucide-react";
 import {
   type JesseStrategy,
   type JesseBacktestSession,
@@ -171,6 +171,39 @@ export function StrategyBacktestPanel({
     onTradesUpdate?.([]);
   }, [onTradesUpdate]);
 
+  // Load a saved backtest JSON from public/backtests/
+  const handleLoadSaved = useCallback(async () => {
+    try {
+      const res = await fetch("/backtests/v5b-shorts.json");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const trades: JesseTrade[] = data.trades || [];
+      if (trades.length === 0) {
+        toast.warning("No Trades", "Saved backtest file has no trades");
+        return;
+      }
+      setState("done");
+      setSession({
+        id: data.sessionId || "saved",
+        status: "finished",
+        metrics: data.metrics || null,
+        trades,
+        equity_curve: [],
+        execution_duration: null,
+        created_at: Date.now(),
+        updated_at: Date.now(),
+        title: data.title || "Saved Backtest",
+        description: null,
+        exception: null,
+        traceback: null,
+      });
+      onTradesUpdate?.(trades);
+      toast.success("Loaded", `${trades.length} trades from ${data.title || "saved backtest"}`);
+    } catch (err) {
+      toast.error("Load Failed", (err as Error).message);
+    }
+  }, [onTradesUpdate]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Config Form */}
@@ -275,6 +308,14 @@ export function StrategyBacktestPanel({
             >
               <Play className="h-3 w-3" />
               Run Backtest
+            </button>
+            <button
+              onClick={handleLoadSaved}
+              className="flex items-center gap-1 px-2 py-1 rounded bg-secondary text-xs font-semibold hover:bg-secondary/80"
+              title="Load V5b saved backtest"
+            >
+              <FolderOpen className="h-3 w-3" />
+              Load V5b
             </button>
 
             {state === "error" && (
