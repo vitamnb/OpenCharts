@@ -1,6 +1,5 @@
 // Annotation API — exposes window.openCharts.annotations namespace
 import { useAnnotationStore, buildAnnotation } from "./store";
-import { chartKey as makeChartKey } from "./types";
 import type {
   HorizontalLineOptions,
   HorizontalRayOptions,
@@ -32,11 +31,11 @@ function ensureChartKey(): string {
 const DEFAULT_COLOR = "#2196F3";
 const DEFAULT_GROUP = "default";
 
-function mergeDefaults(options: Record<string, unknown> | undefined, color?: string): Record<string, unknown> {
+function mergeDefaults(options: unknown, color?: string): Record<string, unknown> {
   return {
     color: color ?? DEFAULT_COLOR,
     group: DEFAULT_GROUP,
-    ...options,
+    ...((options ?? {}) as Record<string, unknown>),
   };
 }
 
@@ -167,6 +166,6 @@ export function mountAnnotationApi(): void {
 export function unmountAnnotationApi(): void {
   if (typeof window === "undefined") return;
   if (window.openCharts) {
-    delete window.openCharts.annotations;
+    delete (window.openCharts as Record<string, unknown>).annotations;
   }
 }

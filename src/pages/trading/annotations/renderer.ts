@@ -207,11 +207,6 @@ export class AnnotationRenderer {
     });
     const pHigh = Math.max(ann.price1, ann.price2);
     const pLow = Math.min(ann.price1, ann.price2);
-    // Need to extend the vertical lines beyond the rectangle for the full chart height
-    // Use a wide price range so the lines are visible
-    const range = pHigh - pLow;
-    const extHigh = pHigh + range * 0.01;
-    const extLow = pLow - range * 0.01;
     
     const t1 = Math.min(ann.time1, ann.time2) as Time;
     const t2 = Math.max(ann.time1, ann.time2) as Time;

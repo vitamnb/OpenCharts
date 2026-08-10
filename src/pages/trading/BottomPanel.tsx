@@ -62,6 +62,8 @@ export interface BottomPanelProps {
   selectedSymbol?: string;
   selectedTimeframe?: string;
   onBacktestTrades?: (trades: JesseTrade[]) => void;
+  onBacktestEquityCurve?: (curve: Array<{ timestamp: number; equity: number }>) => void;
+  onShowDrawdownOverlay?: (show: boolean) => void;
 }
 
 export function BottomPanel({
@@ -85,6 +87,8 @@ export function BottomPanel({
   selectedSymbol,
   selectedTimeframe,
   onBacktestTrades,
+  onBacktestEquityCurve,
+  onShowDrawdownOverlay,
 }: BottomPanelProps) {
   const isDemo = useAuthStore((s) => s.isDemo);
   const cancelOrder = useCancelOrder();
@@ -331,6 +335,8 @@ export function BottomPanel({
             symbol={selectedSymbol ?? ""}
             timeframe={selectedTimeframe ?? "1h"}
             onTradesUpdate={onBacktestTrades}
+            onEquityCurveUpdate={onBacktestEquityCurve}
+            onShowDrawdownOverlay={onShowDrawdownOverlay}
           />
         )}
       </div>

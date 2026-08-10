@@ -13,7 +13,7 @@ interface AnnotationState {
   /** All annotations across all chart keys */
   annotations: Record<string, Annotation[]>;
   /** Add an annotation to a chart key */
-  add: (chartKey: string, ann: Omit<Annotation, "id" | "chartKey" | "createdAt">) => string;
+  add: (chartKey: string, ann: Omit<Annotation, "chartKey" | "createdAt"> & { id?: string }) => string;
   /** Remove one annotation by id */
   remove: (id: string) => void;
   /** Remove all annotations in a group for a chart key */
@@ -119,7 +119,7 @@ export function buildAnnotation(
   kind: AnnotationKind,
   options: Record<string, unknown>,
   createdBy: "agent" | "user" = "agent",
-): Omit<Annotation, "id" | "chartKey" | "createdAt"> {
+): Omit<Annotation, "chartKey" | "createdAt"> & { id?: string } {
   const base = {
     kind,
     group: (options.group as string) ?? "default",
@@ -143,5 +143,5 @@ export function buildAnnotation(
     if (!known.has(k)) fields[k] = v;
   }
 
-  return { ...base, ...fields } as Omit<Annotation, "id" | "chartKey" | "createdAt">;
+  return { ...base, ...fields } as Omit<Annotation, "chartKey" | "createdAt"> & { id?: string };
 }

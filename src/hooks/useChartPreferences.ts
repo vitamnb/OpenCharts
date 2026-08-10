@@ -47,6 +47,13 @@ export interface ChartPreferences {
   showWatermark: boolean;
   showCountdown: boolean;
   showOhlcLegend: boolean;
+  // ── Price scale ──
+  /** "linear" | "log" | "percentage" */
+  priceScaleMode: "linear" | "log" | "percentage";
+  /** Show price scale on left instead of right. */
+  priceScaleLeft: boolean;
+  /** Auto-scale the price range. */
+  priceScaleAutoScale: boolean;
   // ── Challenge-aware overlays ──
   /** Master switch for rule-derived price lines (daily loss / max DD / target). */
   challengeOverlay: boolean;
@@ -89,6 +96,9 @@ const DEFAULT_CHART_PREFS: ChartPreferences = {
   showWatermark: true,
   showCountdown: true,
   showOhlcLegend: true,
+  priceScaleMode: "linear",
+  priceScaleLeft: false,
+  priceScaleAutoScale: true,
   challengeOverlay: false,
   challengeDailyLossLine: false,
   challengeMaxDrawdownLine: false,
@@ -109,6 +119,8 @@ const BOOL_PREF_KEYS = [
   "showWatermark",
   "showCountdown",
   "showOhlcLegend",
+  "priceScaleLeft",
+  "priceScaleAutoScale",
   "challengeOverlay",
   "challengeDailyLossLine",
   "challengeMaxDrawdownLine",
@@ -132,6 +144,7 @@ const STRING_PREF_KEYS = [
   "colorTpLine",
   "colorSlLine",
   "activeChartTemplate",
+  "priceScaleMode",
 ] as const;
 
 /**
@@ -167,12 +180,19 @@ export const TEMPLATE_PREF_KEYS = [
   "colorOrderLine",
   "colorTpLine",
   "colorSlLine",
+  "priceScaleMode",
+  "priceScaleLeft",
+  "priceScaleAutoScale",
 ] as const;
 
 export type TemplatePrefKey = (typeof TEMPLATE_PREF_KEYS)[number];
 
 function toMagnetMode(input: string | undefined): MagnetMode | undefined {
   return input === "weak" || input === "strong" || input === "none" ? input : undefined;
+}
+
+function toPriceScaleMode(input: string | undefined): "linear" | "log" | "percentage" | undefined {
+  return input === "linear" || input === "log" || input === "percentage" ? input : undefined;
 }
 
 function readTraderPrefs(): TraderPrefs {
@@ -209,12 +229,15 @@ export function getChartPreferencesFromStorage(): ChartPreferences {
     result[key] = toBool(prefs[key], DEFAULT_CHART_PREFS[key]);
   }
   for (const key of STRING_PREF_KEYS) {
-    result[key] = prefs[key] ?? DEFAULT_CHART_PREFS[key];
+    // Skip priceScaleMode — handled separately with enum validation below
+    if (key === "priceScaleMode") continue;
+    (result as Record<string, unknown>)[key] = prefs[key] ?? DEFAULT_CHART_PREFS[key];
   }
   // Migrate the old boolean magnet flag to the tri-state when unset.
   result.magnetMode =
     toMagnetMode(prefs.magnetMode) ?? (toBool(prefs.drawingMagnet, false) ? "weak" : "none");
   result.activePlugins = toStringArray(prefs.activePlugins, DEFAULT_CHART_PREFS.activePlugins);
+  result.priceScaleMode = toPriceScaleMode(prefs.priceScaleMode) ?? DEFAULT_CHART_PREFS.priceScaleMode;
   return result;
 }
 

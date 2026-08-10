@@ -4,7 +4,7 @@ import { useAnnotationStore } from "./store";
 import { AnnotationRenderer } from "./renderer";
 import { mountAnnotationApi, setCurrentChartKey } from "./api";
 import { chartKey as makeChartKey } from "./types";
-import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
 
 export function useAnnotations(
   chartRef: React.RefObject<IChartApi | null>,

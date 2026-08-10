@@ -52,6 +52,9 @@ const RESET_BY_TAB: Partial<Record<TabId, Partial<ChartPreferences>>> = {
     showWatermark: true,
     showCountdown: true,
     showOhlcLegend: true,
+    priceScaleMode: "linear" as const,
+    priceScaleLeft: false,
+    priceScaleAutoScale: true,
   },
   colors: {
     candleUpColor: "",
@@ -214,6 +217,34 @@ function AppearanceTab({ prefs }: { prefs: ChartPreferences }) {
         label="Candle borders"
         checked={prefs.showCandleBorders}
         onChange={(v) => set({ showCandleBorders: v })}
+      />
+      <SectionTitle>Price scale</SectionTitle>
+      <div className="flex items-center justify-between gap-4 py-2">
+        <div className="min-w-0">
+          <div className="text-xs text-foreground">Scale mode</div>
+          <div className="text-[10px] text-muted-foreground">Linear, log, or percentage</div>
+        </div>
+        <select
+          value={prefs.priceScaleMode}
+          onChange={(e) => set({ priceScaleMode: e.target.value as "linear" | "log" | "percentage" })}
+          className="rounded border border-border bg-transparent px-2 py-1 text-xs text-foreground"
+        >
+          <option value="linear">Linear</option>
+          <option value="log">Logarithmic</option>
+          <option value="percentage">Percentage</option>
+        </select>
+      </div>
+      <ToggleRow
+        label="Left scale"
+        hint="Show price on the left instead of right"
+        checked={prefs.priceScaleLeft}
+        onChange={(v) => set({ priceScaleLeft: v })}
+      />
+      <ToggleRow
+        label="Auto-scale"
+        hint="Automatically fit price range to visible bars"
+        checked={prefs.priceScaleAutoScale}
+        onChange={(v) => set({ priceScaleAutoScale: v })}
       />
       <SectionTitle>Chart elements</SectionTitle>
       <ToggleRow

@@ -95,6 +95,55 @@ export interface JesseBacktestConfig {
   initial_capital?: number;
 }
 
+export interface JesseCandle {
+  time: number; // unix seconds
+  open: number;
+  close: number;
+  high: number;
+  low: number;
+  volume: number;
+}
+
+export async function fetchJesseCandles(
+  exchange: string,
+  symbol: string,
+  timeframe: string,
+): Promise<JesseCandle[]> {
+  const id = crypto.randomUUID();
+  // Normalise symbol to dashed format for Jesse
+  const dashedSymbol = symbol.includes("-")
+    ? symbol.replace(/-USD$/, "-USDT")
+    : symbol.replace(/^(\w+)(USDT|USD)$/, "$1-USDT");
+
+  const res = await fetch(`${JESSE_BASE}/candles/get`, {
+    method: "POST",
+    headers: jesseHeaders(),
+    body: JSON.stringify({
+      id,
+      exchange,
+      symbol: dashedSymbol,
+      timeframe,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to fetch Jesse candles: ${err}`);
+  }
+
+  const data = await res.json();
+  // Jesse returns { id, data: [[time, open, close, high, low, volume], ...] }
+  const raw: number[][] = data.data || [];
+  return raw.map((c) => ({
+    time: c[0],
+    open: c[1],
+    close: c[2],
+    high: c[3],
+    low: c[4],
+    volume: c[5],
+  }));
+}
+
 export async function checkJesseHealth(): Promise<boolean> {
   try {
     const res = await fetch(`${JESSE_BASE}/`);

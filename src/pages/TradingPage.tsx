@@ -57,6 +57,8 @@ import { useReplayChartData } from "./trading/useReplayChartData.ts";
 import { useReplayPlayback } from "./trading/useReplayPlayback.ts";
 import { getPipDigits } from "./trading/utils.ts";
 import { WatchlistPanel } from "./trading/WatchlistPanel.tsx";
+import { DataSourceToggle } from "./trading/DataSourceToggle.tsx";
+import { useJesseCandles } from "./trading/useJesseCandles.ts";
 
 type ErrorWithMessage = { message?: string };
 
@@ -218,6 +220,8 @@ export function TradingPage() {
 
   // Backtest trades for chart visualisation
   const [backtestTrades, setBacktestTrades] = useState<JesseTrade[]>([]);
+  const [backtestEquityCurve, setBacktestEquityCurve] = useState<Array<{ timestamp: number; equity: number }>>([]);
+  const [showDrawdownOverlay, setShowDrawdownOverlay] = useState(false);
 
   // ── Vertical resize: chart vs bottom panel ──
   const [bottomPanelHeight, setBottomPanelHeight] = useState(() => {
@@ -436,6 +440,9 @@ export function TradingPage() {
     };
   }, [selectedSymbol, timeframe, firstPaintCandleLimit, deepCandleLimit]);
   const { data: candles = [] } = useCandles(selectedSymbol, timeframe, candleLimit, replayVersion);
+  // Jesse historical candles (used when data source toggle is set to "jesse")
+  const { candles: jesseCandles, loading: jesseLoading, error: jesseError, isActive: jesseActive } = useJesseCandles(selectedSymbol, timeframe);
+  const activeCandles = jesseActive ? jesseCandles : candles;
   // Replay: sliced 1m buffer + trade-event markers; null when not replaying.
   // While replayCandles is set, the live tick/candle feed is suppressed below
   // so real-time data can't paint over the playback.
@@ -544,6 +551,14 @@ export function TradingPage() {
         }
       />
 
+      {/* Data source toggle (Live/Jesse) */}
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-border bg-background/50">
+        <DataSourceToggle />
+        {jesseActive && jesseLoading && <span className="text-xs text-muted-foreground">Loading Jesse candles...</span>}
+        {jesseActive && jesseError && <span className="text-xs text-destructive">Jesse: {jesseError}</span>}
+        {jesseActive && !jesseLoading && !jesseError && <span className="text-xs text-muted-foreground">{jesseCandles.length} candles from Jesse</span>}
+      </div>
+
       <MarketClosedBanner symbolInfo={symbolInfo} />
 
       {/* ── Main Layout ──────────────────────────────────── */}
@@ -553,7 +568,7 @@ export function TradingPage() {
           {/* Chart Area */}
           <div className="flex-1 min-h-[200px] relative">
             <ChartPanel
-              candles={replayCandles ?? candles}
+              candles={replayCandles ?? activeCandles}
               selectedSymbol={selectedSymbol}
               timeframe={replayCandles ? "1m" : timeframe}
               onTimeframeChange={handleTimeframeChange}
@@ -608,6 +623,8 @@ export function TradingPage() {
                 );
               }}
               backtestTrades={backtestTrades}
+              backtestEquityCurve={backtestEquityCurve}
+              showDrawdownOverlay={showDrawdownOverlay}
             />
           </div>
 
@@ -658,6 +675,8 @@ export function TradingPage() {
             selectedSymbol={selectedSymbol}
             selectedTimeframe={timeframe}
             onBacktestTrades={setBacktestTrades}
+            onBacktestEquityCurve={setBacktestEquityCurve}
+            onShowDrawdownOverlay={setShowDrawdownOverlay}
             journalEntries={journalData?.entries || []}
             journalLoading={journalLoading}
             onCreateJournal={(data: CreateJournalEntryInput) =>

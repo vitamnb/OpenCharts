@@ -15,6 +15,7 @@ import {
   type ISeriesPrimitive,
   LineStyle,
   type LogicalRange,
+  PriceScaleMode,
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
@@ -77,6 +78,8 @@ import { useIndicatorPaneZoom } from "./useIndicatorPaneZoom.ts";
 import { useVwapRsiConfluence } from "./useVwapRsiConfluence.ts";
 import { useVwapRsiSMCConfluence } from "./useVwapRsiSMCConfluence.ts";
 import { useSMCHeatmap } from "./useSMCHeatmap.ts";
+import { useAnnotations } from "./annotations/useAnnotations.ts";
+import { useDrawdownOverlay } from "./useDrawdownOverlay.ts";
 import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
 import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
 import { IndicatorCommandPalette } from "./IndicatorCommandPalette.tsx";
@@ -287,6 +290,10 @@ export interface ChartPanelProps {
   isReplaying?: boolean;
   /** Backtest trades from Jesse, rendered as entry/exit markers on the chart. */
   backtestTrades?: JesseTrade[];
+  /** Equity curve from Jesse backtest, used for drawdown overlay. */
+  backtestEquityCurve?: Array<{ timestamp: number; equity: number }>;
+  /** Show drawdown overlay on the chart. */
+  showDrawdownOverlay?: boolean;
 }
 
 // ── Chart plugin overlays ─────────────────────────────────────────────────────
@@ -1135,6 +1142,8 @@ export function ChartPanel({
   onToggleIndicator,
   isReplaying = false,
   backtestTrades = [],
+  backtestEquityCurve,
+  showDrawdownOverlay = false,
 }: ChartPanelProps) {
   const queryClient = useQueryClient();
   const lastGapRefetchAtRef = useRef<number>(0);
@@ -1870,6 +1879,29 @@ export function ChartPanel({
     });
   }, [chartPrefs.showGrid, chartEpoch]);
 
+  // Apply price scale mode and position
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const modeMap: Record<string, PriceScaleMode> = {
+      linear: PriceScaleMode.Normal,
+      log: PriceScaleMode.Logarithmic,
+      percentage: PriceScaleMode.Percentage,
+    };
+    const mode = modeMap[chartPrefs.priceScaleMode] ?? PriceScaleMode.Normal;
+    // Apply to the visible price scale (right or left)
+    const visibleScaleId = chartPrefs.priceScaleLeft ? "left" : "right";
+    const hiddenScaleId = chartPrefs.priceScaleLeft ? "right" : "left";
+    chart.priceScale(visibleScaleId).applyOptions({
+      mode,
+      autoScale: chartPrefs.priceScaleAutoScale,
+      visible: true,
+    });
+    chart.priceScale(hiddenScaleId).applyOptions({ visible: false });
+    candleSeriesRef.current?.applyOptions({ priceScaleId: visibleScaleId });
+    volumeSeriesRef.current?.applyOptions({ priceScaleId: "volume" });
+  }, [chartPrefs.priceScaleMode, chartPrefs.priceScaleLeft, chartPrefs.priceScaleAutoScale, chartEpoch]);
+
   // Timeframe change — the chart instance is NOT recreated (so drawings stay
   // attached); instead we update the persistent chart's options and re-point
   // the drawing manager's interval/createdTf at the new TF in place.
@@ -1988,6 +2020,12 @@ export function ChartPanel({
   const smcConfluenceEnabled = activeIndicators.includes("VWAP_RSI_SMC");
   const smcConfluenceParams = indicatorParams["VWAP_RSI_SMC"];
   useVwapRsiSMCConfluence(chartRef, candleSeriesRef, chartData, smcConfluenceEnabled, smcConfluenceParams ?? {}, volumeData, timeframe);
+
+  // Annotation API: programmatic chart drawing for agent collaboration
+  useAnnotations(chartRef, candleSeriesRef, selectedSymbol, timeframe);
+
+  // Drawdown overlay: red shaded area showing equity drawdown from backtest
+  useDrawdownOverlay(chartRef, backtestEquityCurve, showDrawdownOverlay ?? false);
 
   // ── Real-time candle updates ──────────────────────────
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, Square, RefreshCw, FolderOpen } from "lucide-react";
+import { Play, Square, RefreshCw, FolderOpen, Settings as SettingsIcon } from "lucide-react";
 import {
   type JesseStrategy,
   type JesseBacktestSession,
@@ -19,6 +19,8 @@ import {
 } from "../../lib/backtest-markers";
 import { toast } from "../../services/toast";
 import { cn } from "../../lib/utils";
+import { StrategySettingsDrawer } from "./StrategySettingsDrawer.tsx";
+import { LongShortBreakdown, MonthlyReturns } from "./ExpandedMetrics.tsx";
 
 type BacktestState = "idle" | "running" | "done" | "error";
 
@@ -26,11 +28,10 @@ interface StrategyBacktestPanelProps {
   symbol: string;
   timeframe: string;
   onTradesUpdate?: (trades: JesseTrade[]) => void;
+  onEquityCurveUpdate?: (curve: Array<{ timestamp: number; equity: number }>) => void;
+  onShowDrawdownOverlay?: (show: boolean) => void;
   onSessionComplete?: (session: JesseBacktestSession) => void;
 }
-
-const TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w"];
-const EXCHANGES = ["Binance Perpetual Futures", "Binance", "Kucoin", "Coinbase", "Bitfinex"];
 
 function defaultDateRange(): { start: string; end: string } {
   const end = new Date();
@@ -42,12 +43,8 @@ function defaultDateRange(): { start: string; end: string } {
   };
 }
 
-export function StrategyBacktestPanel({
-  symbol,
-  timeframe,
-  onTradesUpdate,
-  onSessionComplete,
-}: StrategyBacktestPanelProps) {
+export function StrategyBacktestPanel(props: StrategyBacktestPanelProps) {
+  const { symbol, timeframe, onTradesUpdate, onSessionComplete, onEquityCurveUpdate, onShowDrawdownOverlay } = props;
   const [strategies, setStrategies] = useState<JesseStrategy[]>([]);
   const [selectedStrategy, setSelectedStrategy] = useState<string>("");
   const [exchange, setExchange] = useState<string>("Binance Perpetual Futures");
@@ -57,7 +54,9 @@ export function StrategyBacktestPanel({
   const [initialCapital, setInitialCapital] = useState(10000);
   const [state, setState] = useState<BacktestState>("idle");
   const [session, setSession] = useState<JesseBacktestSession | null>(null);
+  const [showDrawdown, setShowDrawdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const cancelPollRef = useRef<(() => void) | null>(null);
 
   // Load strategies on mount
@@ -120,12 +119,18 @@ export function StrategyBacktestPanel({
           if (s.trades.length > 0) {
             onTradesUpdate?.(s.trades);
           }
+          if (s.equity_curve && s.equity_curve.length > 0) {
+            onEquityCurveUpdate?.(s.equity_curve);
+          }
         },
         (s) => {
           setState(s.status === "error" ? "error" : "done");
           setSession(s);
           if (s.trades.length > 0) {
             onTradesUpdate?.(s.trades);
+          }
+          if (s.equity_curve && s.equity_curve.length > 0) {
+            onEquityCurveUpdate?.(s.equity_curve);
           }
           onSessionComplete?.(s);
           if (s.status === "error" || s.exception) {
@@ -169,6 +174,9 @@ export function StrategyBacktestPanel({
     setSession(null);
     setError(null);
     onTradesUpdate?.([]);
+    onEquityCurveUpdate?.([]);
+    onShowDrawdownOverlay?.(false);
+    setShowDrawdown(false);
   }, [onTradesUpdate]);
 
   // Load a saved backtest JSON from public/backtests/
@@ -206,13 +214,10 @@ export function StrategyBacktestPanel({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Config Form */}
+      {/* Compact config bar + settings drawer */}
       {(state === "idle" || state === "error") && (
-        <div className="p-3 space-y-2 overflow-auto">
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-              Strategy
-            </label>
+        <div className="relative flex flex-col h-full overflow-hidden">
+          <div className="flex items-center gap-2 p-2 flex-wrap border-b border-border">
             <select
               value={selectedStrategy}
               onChange={(e) => setSelectedStrategy(e.target.value)}
@@ -225,103 +230,59 @@ export function StrategyBacktestPanel({
               ))}
             </select>
 
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-2">
-              Exchange
-            </label>
-            <select
-              value={exchange}
-              onChange={(e) => setExchange(e.target.value)}
-              className="bg-secondary text-xs rounded px-2 py-1 border border-border/50 focus:outline-none focus:border-primary"
-            >
-              {EXCHANGES.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
-              ))}
-            </select>
+            <span className="text-[10px] text-muted-foreground">
+              {btSymbol} · {btTimeframe} · {dateRange.start} → {dateRange.end}
+            </span>
 
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-2">
-              Symbol
-            </label>
-            <input
-              type="text"
-              value={btSymbol}
-              onChange={(e) => setBtSymbol(e.target.value)}
-              className="bg-secondary text-xs rounded px-2 py-1 border border-border/50 focus:outline-none focus:border-primary w-24"
-              placeholder="BTC-USDT"
-            />
-
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-2">
-              TF
-            </label>
-            <select
-              value={btTimeframe}
-              onChange={(e) => setBtTimeframe(e.target.value)}
-              className="bg-secondary text-xs rounded px-2 py-1 border border-border/50 focus:outline-none focus:border-primary"
-            >
-              {TIMEFRAMES.map((tf) => (
-                <option key={tf} value={tf}>
-                  {tf}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-              From
-            </label>
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) =>
-                setDateRange((d) => ({ ...d, start: e.target.value }))
-              }
-              className="bg-secondary text-xs rounded px-2 py-1 border border-border/50 focus:outline-none focus:border-primary"
-            />
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-2">
-              To
-            </label>
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) =>
-                setDateRange((d) => ({ ...d, end: e.target.value }))
-              }
-              className="bg-secondary text-xs rounded px-2 py-1 border border-border/50 focus:outline-none focus:border-primary"
-            />
-            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide ml-2">
-              Capital
-            </label>
-            <input
-              type="number"
-              value={initialCapital}
-              onChange={(e) =>
-                setInitialCapital(parseInt(e.target.value) || 10000)
-              }
-              className="bg-secondary text-xs rounded px-2 py-1 border border-border/50 focus:outline-none focus:border-primary w-24"
-            />
-
-            <button
-              onClick={handleRun}
-              className="flex items-center gap-1 px-3 py-1 rounded bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
-            >
-              <Play className="h-3 w-3" />
-              Run Backtest
-            </button>
-            <button
-              onClick={handleLoadSaved}
-              className="flex items-center gap-1 px-2 py-1 rounded bg-secondary text-xs font-semibold hover:bg-secondary/80"
-              title="Load V5b saved backtest"
-            >
-              <FolderOpen className="h-3 w-3" />
-              Load V5b
-            </button>
-
+            <div className="flex items-center gap-1 ml-auto">
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-secondary text-xs font-semibold hover:bg-secondary/80"
+                title="Backtest settings"
+              >
+                <SettingsIcon className="h-3 w-3" />
+                Settings
+              </button>
+              <button
+                onClick={handleRun}
+                className="flex items-center gap-1 px-3 py-1 rounded bg-primary text-primary-foreground text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Play className="h-3 w-3" />
+                Run
+              </button>
+              <button
+                onClick={handleLoadSaved}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-secondary text-xs font-semibold hover:bg-secondary/80"
+                title="Load V5b saved backtest"
+              >
+                <FolderOpen className="h-3 w-3" />
+              </button>
+            </div>
             {state === "error" && (
-              <span className="text-xs text-destructive">{error}</span>
+              <span className="text-xs text-destructive w-full">{error}</span>
             )}
           </div>
+
+          <div className="flex items-center justify-center h-full text-muted-foreground text-xs py-4">
+            Configure in Settings, then hit Run
+          </div>
+
+          <StrategySettingsDrawer
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            exchange={exchange}
+            symbol={btSymbol}
+            timeframe={btTimeframe}
+            dateRange={dateRange}
+            initialCapital={initialCapital}
+            onExchangeChange={setExchange}
+            onSymbolChange={setBtSymbol}
+            onTimeframeChange={setBtTimeframe}
+            onDateRangeChange={setDateRange}
+            onInitialCapitalChange={setInitialCapital}
+            onApply={handleRun}
+            strategyName={selectedStrategy}
+          />
         </div>
       )}
 
@@ -352,9 +313,36 @@ export function StrategyBacktestPanel({
       {/* Results */}
       {(state === "done" || (state === "running" && session?.trades?.length)) && (
         <div className="flex flex-col min-h-0 flex-1">
-          {session?.metrics && <MetricsCard metrics={session.metrics} />}
+          {session?.metrics && (
+            <div className="flex items-center gap-2">
+              <MetricsCard metrics={session.metrics} />
+              {session?.equity_curve && session.equity_curve.length > 0 && (
+                <button
+                  onClick={() => {
+                    const next = !showDrawdown;
+                    setShowDrawdown(next);
+                    onShowDrawdownOverlay?.(next);
+                  }}
+                  className={`shrink-0 rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                    showDrawdown
+                      ? "bg-destructive/10 text-destructive border-destructive/30"
+                      : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                  }`}
+                  title="Toggle drawdown overlay on chart"
+                >
+                  Drawdown Overlay
+                </button>
+              )}
+            </div>
+          )}
           {session?.equity_curve && session.equity_curve.length > 0 && (
             <EquityCurveMini data={session.equity_curve} />
+          )}
+          {session?.trades && session.trades.length > 0 && (
+            <LongShortBreakdown trades={session.trades} />
+          )}
+          {session?.trades && session.trades.length > 0 && (
+            <MonthlyReturns trades={session.trades} />
           )}
           {session?.trades && session.trades.length > 0 && (
             <BacktestTradesTable trades={session.trades} />
@@ -377,13 +365,6 @@ export function StrategyBacktestPanel({
               <PreviousSessions />
             </div>
           )}
-        </div>
-      )}
-
-      {/* Idle empty state */}
-      {state === "idle" && !session && (
-        <div className="flex items-center justify-center h-full text-muted-foreground text-xs py-4">
-          Configure a backtest above and hit Run
         </div>
       )}
     </div>
@@ -443,70 +424,142 @@ function MetricsCard({ metrics }: { metrics: JesseBacktestMetrics }) {
 }
 
 // ── Trades Table ──────────────────────────────────────────
+type SortKey = "opened_at" | "closed_at" | "pnl" | "pnl_percentage" | "entry_price" | "exit_price" | "holding_period";
+type FilterMode = "all" | "wins" | "losses" | "long" | "short";
+
 function BacktestTradesTable({ trades }: { trades: JesseTrade[] }) {
+  const [sortKey, setSortKey] = useState<SortKey>("opened_at");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [filter, setFilter] = useState<FilterMode>("all");
+
+  const filtered = trades.filter((t) => {
+    switch (filter) {
+      case "wins": return (t.pnl ?? 0) >= 0;
+      case "losses": return (t.pnl ?? 0) < 0;
+      case "long": return t.type === "long";
+      case "short": return t.type === "short";
+      default: return true;
+    }
+  });
+
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === "asc" ? 1 : -1;
+    const getVal = (t: JesseTrade, key: SortKey): number => {
+      switch (key) {
+        case "opened_at": return t.opened_at;
+        case "closed_at": return t.closed_at ?? 0;
+        case "pnl": return t.pnl ?? 0;
+        case "pnl_percentage": return t.pnl_percentage ?? 0;
+        case "entry_price": return t.entry_price ?? 0;
+        case "exit_price": return t.exit_price ?? 0;
+        case "holding_period": return parseFloat(t.holding_period ?? "0") || 0;
+      }
+    };
+    return (getVal(a, sortKey) - getVal(b, sortKey)) * dir;
+  });
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const SortHeader = ({ label, key }: { label: string; key: SortKey }) => (
+    <th
+      onClick={() => handleSort(key)}
+      className="cursor-pointer hover:text-foreground select-none whitespace-nowrap"
+    >
+      {label}
+      {sortKey === key && <span className="text-muted-foreground">{sortDir === "asc" ? " ↑" : " ↓"}</span>}
+    </th>
+  );
+
   return (
-    <div className="flex-1 overflow-auto">
-      <table className="w-full text-[11px]">
-        <thead className="sticky top-0 bg-card z-10">
-          <tr>
-            <th>Opened</th>
-            <th>Closed</th>
-            <th>Symbol</th>
-            <th>Side</th>
-            <th>Qty</th>
-            <th>Entry</th>
-            <th>Exit</th>
-            <th>PnL</th>
-            <th>PnL %</th>
-            <th>Hold</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map((t) => {
-            const isWin = (t.pnl ?? 0) >= 0;
-            return (
-              <tr key={t.id} className="hover:bg-secondary/30">
-                <td className="text-muted-foreground">
-                  {new Date(t.opened_at).toLocaleDateString("en-GB", {
-                    timeZone: "UTC",
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </td>
-                <td className="text-muted-foreground">
-                  {t.closed_at
-                    ? new Date(t.closed_at).toLocaleDateString("en-GB", {
-                        timeZone: "UTC",
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "--"}
-                </td>
-                <td className="font-semibold">{t.symbol}</td>
-                <td className={t.type === "long" ? "text-buy" : "text-sell"}>
-                  {t.type === "long" ? "L" : "S"}
-                </td>
-                <td>{t.qty?.toFixed(4) ?? "--"}</td>
-                <td>{t.entry_price?.toFixed(2) ?? "--"}</td>
-                <td>{t.exit_price?.toFixed(2) ?? "--"}</td>
-                <td className={isWin ? "text-buy" : "text-sell"}>
-                  {t.pnl != null ? formatCurrency(t.pnl) : "--"}
-                </td>
-                <td className={isWin ? "text-buy" : "text-sell"}>
-                  {t.pnl_percentage != null
-                    ? formatPercentage(t.pnl_percentage)
-                    : "--"}
-                </td>
-                <td className="text-muted-foreground">{t.holding_period ?? "--"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Filter bar */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 text-[10px]">
+        <span className="text-muted-foreground">Filter:</span>
+        {(["all", "wins", "losses", "long", "short"] as FilterMode[]).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              "px-1.5 py-0.5 rounded",
+              filter === f ? "bg-primary text-primary-foreground" : "bg-secondary hover:bg-secondary/80",
+            )}
+          >
+            {f === "all" ? "All" : f === "wins" ? "Wins" : f === "losses" ? "Losses" : f === "long" ? "Longs" : "Shorts"}
+          </button>
+        ))}
+        <span className="text-muted-foreground ml-auto">{sorted.length} trades</span>
+      </div>
+
+      <div className="flex-1 overflow-auto">
+        <table className="w-full text-[11px]">
+          <thead className="sticky top-0 bg-card z-10">
+            <tr>
+              <SortHeader label="Opened" key="opened_at" />
+              <SortHeader label="Closed" key="closed_at" />
+              <th>Symbol</th>
+              <th>Side</th>
+              <th>Qty</th>
+              <SortHeader label="Entry" key="entry_price" />
+              <SortHeader label="Exit" key="exit_price" />
+              <SortHeader label="PnL" key="pnl" />
+              <SortHeader label="PnL %" key="pnl_percentage" />
+              <SortHeader label="Hold" key="holding_period" />
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((t) => {
+              const isWin = (t.pnl ?? 0) >= 0;
+              return (
+                <tr key={t.id} className="hover:bg-secondary/30 cursor-pointer">
+                  <td className="text-muted-foreground">
+                    {new Date(t.opened_at).toLocaleDateString("en-GB", {
+                      timeZone: "UTC",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </td>
+                  <td className="text-muted-foreground">
+                    {t.closed_at
+                      ? new Date(t.closed_at).toLocaleDateString("en-GB", {
+                          timeZone: "UTC",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "--"}
+                  </td>
+                  <td className="font-semibold">{t.symbol}</td>
+                  <td className={t.type === "long" ? "text-buy" : "text-sell"}>
+                    {t.type === "long" ? "L" : "S"}
+                  </td>
+                  <td>{t.qty?.toFixed(4) ?? "--"}</td>
+                  <td>{t.entry_price?.toFixed(2) ?? "--"}</td>
+                  <td>{t.exit_price?.toFixed(2) ?? "--"}</td>
+                  <td className={cn(isWin ? "text-buy" : "text-sell", "font-semibold")}>
+                    {t.pnl != null ? formatCurrency(t.pnl) : "--"}
+                  </td>
+                  <td className={isWin ? "text-buy" : "text-sell"}>
+                    {t.pnl_percentage != null
+                      ? formatPercentage(t.pnl_percentage)
+                      : "--"}
+                  </td>
+                  <td className="text-muted-foreground">{t.holding_period ?? "--"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
