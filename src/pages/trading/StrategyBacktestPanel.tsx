@@ -20,6 +20,7 @@ import {
 import { toast } from "../../services/toast";
 import { cn } from "../../lib/utils";
 import { StrategySettingsDrawer } from "./StrategySettingsDrawer.tsx";
+import { MultiStrategyComparison } from "./MultiStrategyComparison.tsx";
 import { LongShortBreakdown, MonthlyReturns } from "./ExpandedMetrics.tsx";
 
 type BacktestState = "idle" | "running" | "done" | "error";
@@ -57,6 +58,7 @@ export function StrategyBacktestPanel(props: StrategyBacktestPanelProps) {
   const [showDrawdown, setShowDrawdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showComparison, setShowComparison] = useState(false);
   const cancelPollRef = useRef<(() => void) | null>(null);
 
   // Load strategies on mount
@@ -333,7 +335,28 @@ export function StrategyBacktestPanel(props: StrategyBacktestPanelProps) {
                   Drawdown Overlay
                 </button>
               )}
+              <button
+                onClick={() => setShowComparison((v) => !v)}
+                className={`flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                  showComparison
+                    ? "bg-primary/10 text-primary border-primary/30"
+                    : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                }`}
+                title="Compare multiple strategies"
+              >
+                Compare
+              </button>
             </div>
+          )}
+          {showComparison && (
+            <MultiStrategyComparison
+              symbol={symbol}
+              timeframe={timeframe}
+              exchange={exchange}
+              dateRange={dateRange}
+              initialCapital={initialCapital}
+              availableStrategies={strategies.map((s) => s.name)}
+            />
           )}
           {session?.equity_curve && session.equity_curve.length > 0 && (
             <EquityCurveMini data={session.equity_curve} />

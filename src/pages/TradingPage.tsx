@@ -210,7 +210,7 @@ export function TradingPage() {
     updateChartPreferences({ activePlugins: ids });
   }, []);
   const [bottomTab, setBottomTab] = useState<
-    "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy"
+    "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy" | "alerts"
   >("positions");
   const { data: aiTraderEnabled } = useAiTraderEnabled();
   const [rightPanel, setRightPanel] = useState<
@@ -536,7 +536,7 @@ export function TradingPage() {
         onToggleRightPanel={() => setShowRightPanel((v) => !v)}
         tick={tick}
         symbolInfo={symbolInfo}
-        aiTraderEnabled={aiTraderEnabled?.enabled ?? false}
+        aiTraderEnabled={aiTraderEnabled ?? false}
         isReplaying={isReplaying}
         replayAccountId={activeAccountId}
         activePlugins={activePlugins}
@@ -548,6 +548,18 @@ export function TradingPage() {
         stayInDrawingMode={chartPrefs.stayInDrawingMode}
         onToggleStayInDrawingMode={() =>
           updateChartPreferences({ stayInDrawingMode: !chartPrefs.stayInDrawingMode })
+        }
+        secondTimeframe={chartPrefs.secondTimeframe}
+        showSecondTimeframe={chartPrefs.showSecondTimeframe}
+        onSecondTimeframeChange={(tf) =>
+          updateChartPreferences({
+            secondTimeframe: tf,
+            // Auto-show the overlay when a timeframe is selected
+            showSecondTimeframe: tf != null ? true : chartPrefs.showSecondTimeframe,
+          })
+        }
+        onToggleSecondTimeframe={() =>
+          updateChartPreferences({ showSecondTimeframe: !chartPrefs.showSecondTimeframe })
         }
       />
 
@@ -625,6 +637,8 @@ export function TradingPage() {
               backtestTrades={backtestTrades}
               backtestEquityCurve={backtestEquityCurve}
               showDrawdownOverlay={showDrawdownOverlay}
+              secondTimeframe={chartPrefs.secondTimeframe}
+              showSecondTimeframe={chartPrefs.showSecondTimeframe}
             />
           </div>
 
@@ -669,7 +683,7 @@ export function TradingPage() {
             onModifyOrder={setModifyingOrder}
             onSelectPositionSymbol={setSelectedSymbol}
             onSelectOrderSymbol={setSelectedSymbol}
-            aiTraderEnabled={aiTraderEnabled?.enabled ?? false}
+            aiTraderEnabled={aiTraderEnabled ?? false}
             height={bottomPanelHeight}
             isFeedConnected={isFeedConnected}
             selectedSymbol={selectedSymbol}

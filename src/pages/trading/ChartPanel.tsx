@@ -70,6 +70,7 @@ import {
 } from "./DrawingToolsOverlay.tsx";
 import { DrawingToolRail } from "./DrawingToolRail.tsx";
 import { useCandlestickPatterns } from "./useCandlestickPatterns.ts";
+import { useSecondTimeframeData } from "./useSecondTimeframeData.ts";
 import { DRAWING_STYLES_EVENT, getStyleDefaults } from "./drawingStyles.ts";
 import { ObjectTreePanel } from "./ObjectTreePanel.tsx";
 import { useChallengeLevels } from "./useChallengeLevels.ts";
@@ -80,6 +81,11 @@ import { useVwapRsiSMCConfluence } from "./useVwapRsiSMCConfluence.ts";
 import { useSMCHeatmap } from "./useSMCHeatmap.ts";
 import { useAnnotations } from "./annotations/useAnnotations.ts";
 import { useDrawdownOverlay } from "./useDrawdownOverlay.ts";
+import { useAlertEngine } from "./alerts/useAlertEngine.ts";
+import { AddAlertDialog } from "./alerts/AddAlertDialog.tsx";
+import { useVolumeProfile } from "./useVolumeProfile.ts";
+import { useOrderBook } from "./useOrderBook.ts";
+import { OrderBookHeatmap } from "./OrderBookHeatmap.tsx";
 import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
 import { IndicatorPaneNametags } from "./IndicatorPaneNametags.tsx";
 import { IndicatorCommandPalette } from "./IndicatorCommandPalette.tsx";
@@ -294,6 +300,10 @@ export interface ChartPanelProps {
   backtestEquityCurve?: Array<{ timestamp: number; equity: number }>;
   /** Show drawdown overlay on the chart. */
   showDrawdownOverlay?: boolean;
+  /** Second timeframe for overlay (null = disabled). */
+  secondTimeframe?: string | null;
+  /** Whether the second timeframe overlay is visible. */
+  showSecondTimeframe?: boolean;
 }
 
 // ── Chart plugin overlays ─────────────────────────────────────────────────────
@@ -1144,6 +1154,8 @@ export function ChartPanel({
   backtestTrades = [],
   backtestEquityCurve,
   showDrawdownOverlay = false,
+  secondTimeframe = null,
+  showSecondTimeframe = false,
 }: ChartPanelProps) {
   const queryClient = useQueryClient();
   const lastGapRefetchAtRef = useRef<number>(0);
@@ -1152,6 +1164,8 @@ export function ChartPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  // Second timeframe overlay series (translucent candles behind main series)
+  const secondTfSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   // Scroll-triggered historical extension — older bars prepended as the user
   // scrolls left past what the initial deep-fetch already loaded.
@@ -1232,6 +1246,9 @@ export function ChartPanel({
     null,
   );
   const [showChartSettings, setShowChartSettings] = useState(false);
+  const [showAlertDialog, setShowAlertDialog] = useState(false);
+  const [alertPrePrice, setAlertPrePrice] = useState<number | null>(null);
+  const [alertPreDrawingId, setAlertPreDrawingId] = useState<string | null>(null);
   // The style toolbar / settings dialog only apply to a single selection.
   const selectedDrawing = useMemo(
     () =>
@@ -1339,6 +1356,13 @@ export function ChartPanel({
   );
   const { chartData, volumeData } = useChartData(allCandles, colors);
 
+  ﻿// ── Second timeframe overlay data ──
+  const { data: secondTfData } = useSecondTimeframeData(
+    selectedSymbol,
+    secondTimeframe,
+    showSecondTimeframe,
+  );
+
   // News overlay disabled - not needed for now
   // const { ... } = useNewsOverlay(containerRef, chartRef, selectedSymbol, isDark, chartData);
 
@@ -1416,18 +1440,11 @@ export function ChartPanel({
 
   const handleAddAlert = useCallback(
     (price: number) => {
-      const rounded = parseFloat(price.toFixed(pipDigits));
-      onAddDrawing({
-        id: crypto.randomUUID(),
-        type: "horizontal",
-        price: rounded,
-        color: "#f0b90b",
-        alertEnabled: true,
-        createdTf: timeframe,
-      });
-      toast.info("Alert set", `${selectedSymbol} at ${rounded}`);
+      setAlertPrePrice(parseFloat(price.toFixed(pipDigits)));
+      setAlertPreDrawingId(null);
+      setShowAlertDialog(true);
     },
-    [onAddDrawing, pipDigits, timeframe, selectedSymbol],
+    [pipDigits],
   );
 
   const { paneMeta } = useIndicators(chartRef, candleSeriesRef, chartData, activeIndicators, isDark, indicatorParams, indicatorAppearance, hiddenIndicators, volumeData);
@@ -1475,8 +1492,11 @@ export function ChartPanel({
     // When backtest trades are loaded, fetch historical candles from KuCoin
     // so the chart can display the period where the trades occurred.
     if (btMarkers.length > 0 && chart) {
-      const firstTime = btMarkers[0].time as number;
-      const lastTime = btMarkers[btMarkers.length - 1].time as number;
+      const firstMarker = btMarkers[0];
+      const lastMarker = btMarkers[btMarkers.length - 1];
+      if (!firstMarker || !lastMarker) return;
+      const firstTime = firstMarker.time as number;
+      const lastTime = lastMarker.time as number;
       const pad = Math.round((lastTime - firstTime) * 0.05);
       const startAt = firstTime - pad;
       const endAt = lastTime + pad;
@@ -1487,7 +1507,7 @@ export function ChartPanel({
       // Fetch 15m candles for the backtest period (KuCoin max 1500 per request)
       // We need multiple requests to cover ~7 months of 15m candles (~20k candles)
       const tf = timeframeRef.current || "15m";
-      const intervalSec = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400 }[tf] ?? 900;
+      const intervalSec = intervalSecOf(tf as Timeframe);
       const totalCandles = Math.ceil((endAt - startAt) / intervalSec);
       const batches = Math.ceil(totalCandles / 1500);
       let allCandles: Candle[] = [];
@@ -1499,7 +1519,7 @@ export function ChartPanel({
           try {
             const kcCandles = await fetchCandles(selectedSymbol, tf, batchStart, batchEnd);
             const mapped: Candle[] = kcCandles.map(c => ({
-              time: c.time as Time,
+              time: c.time as number,
               open: c.open,
               high: c.high,
               low: c.low,
@@ -1507,8 +1527,8 @@ export function ChartPanel({
               volume: c.volume,
             }));
             allCandles = [...allCandles, ...mapped];
-          } catch (e) {
-            console.warn(`Backtest candle fetch batch ${i} failed:`, e);
+          } catch {
+            // Backtest candle fetch batch failed, skip silently
           }
         }
         if (allCandles.length > 0) {
@@ -1705,6 +1725,20 @@ export function ChartPanel({
     });
     volumeSeriesRef.current = volumeSeries;
 
+    ﻿// Second timeframe overlay series, translucent candles behind the main series
+    const secondTfSeries = chart.addSeries(CandlestickSeries, {
+      upColor: "rgba(14, 203, 129, 0.35)",
+      downColor: "rgba(246, 70, 93, 0.35)",
+      borderUpColor: "rgba(14, 203, 129, 0.4)",
+      borderDownColor: "rgba(246, 70, 93, 0.4)",
+      wickUpColor: "rgba(14, 203, 129, 0.3)",
+      wickDownColor: "rgba(246, 70, 93, 0.3)",
+      lastValueVisible: false,
+      priceLineVisible: false,
+      visible: false, // hidden by default, shown when user enables it
+    });
+    secondTfSeriesRef.current = secondTfSeries;
+
     // Subscribe to crosshair move for OHLCV legend
     chart.subscribeCrosshairMove((param) => {
       if (!param?.time) {
@@ -1800,6 +1834,7 @@ export function ChartPanel({
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
+      secondTfSeriesRef.current = null;
       volumeSeriesRef.current = null;
       bidLineRef.current = null;
       askLineRef.current = null;
@@ -2026,6 +2061,54 @@ export function ChartPanel({
 
   // Drawdown overlay: red shaded area showing equity drawdown from backtest
   useDrawdownOverlay(chartRef, backtestEquityCurve, showDrawdownOverlay ?? false);
+
+  ﻿// ── Second timeframe overlay: update data and visibility ──
+  useEffect(() => {
+    const series = secondTfSeriesRef.current;
+    if (!series) return;
+
+    // Toggle visibility based on user preference
+    series.applyOptions({ visible: showSecondTimeframe && secondTimeframe != null });
+
+    if (!showSecondTimeframe || secondTimeframe == null || secondTfData.length === 0) {
+      series.setData([]);
+      return;
+    }
+
+    // Set the overlay candle data. Both timeframes use Unix timestamps in
+    // seconds, so they share the same time scale natively.
+    series.setData(secondTfData);
+  }, [secondTfData, showSecondTimeframe, secondTimeframe]);
+
+  // Alert engine: checks price and line-cross alerts on every mid-price update
+  useAlertEngine({
+    symbol: selectedSymbol,
+    midPrice: tick ? (tick.bid + tick.ask) / 2 : null,
+    drawings: drawingsRef.current,
+    onAlertFired: (alert, triggerPrice) => {
+      toast.info(
+        "Alert fired",
+        alert.message || `${selectedSymbol} crossed ${triggerPrice.toFixed(pipDigits)}`,
+      );
+    },
+  });
+
+  // Volume profile histogram
+  useVolumeProfile({
+    chartRef,
+    candles: allCandles.length > 0 ? allCandles.map((c) => ({
+      time: typeof c.time === "number" ? c.time : Math.floor(new Date(c.time).getTime() / 1000),
+      open: c.open,
+      high: c.high,
+      low: c.low,
+      close: c.close,
+      volume: c.volume ?? 0,
+    })) : null,
+    enabled: chartPrefs?.showVolumeProfile ?? false,
+  });
+
+  // Order book heatmap overlay
+  const orderBookData = useOrderBook(selectedSymbol, chartPrefs.showOrderBookHeatmap);
 
   // ── Real-time candle updates ──────────────────────────
 
@@ -2293,6 +2376,16 @@ export function ChartPanel({
         hasAccount={!!accountId}
       />
 
+      <AddAlertDialog
+        open={showAlertDialog}
+        onClose={() => setShowAlertDialog(false)}
+        symbol={selectedSymbol}
+        currentPrice={tick ? (tick.bid + tick.ask) / 2 : null}
+        drawings={drawingsRef.current}
+        preselectedPrice={alertPrePrice}
+        preselectedDrawingId={alertPreDrawingId}
+      />
+
       {/* Chart container — cursor is managed imperatively by DrawingToolsManager */}
       {/* When rail is docked, left padding pushes chart right so nothing gets cut off */}
       <div
@@ -2300,6 +2393,16 @@ export function ChartPanel({
         className="w-full h-full transition-[padding]"
         style={{ paddingLeft: typeof window !== "undefined" && localStorage.getItem("drawingRailDocked") === "true" ? "44px" : "0" }}
         onContextMenu={handleChartContextMenu}
+      />
+
+      {/* Order book heatmap canvas overlay (semi-transparent, on top of chart) */}
+      <OrderBookHeatmap
+        chartRef={chartRef}
+        candleSeriesRef={candleSeriesRef}
+        containerRef={containerRef}
+        snapshots={orderBookData.snapshots}
+        enabled={chartPrefs.showOrderBookHeatmap}
+        isDark={isDark}
       />
 
       {/* Pane-resize handles: one between each pair of chart panes (indicator

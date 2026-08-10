@@ -111,6 +111,11 @@ export interface ChartToolbarProps {
   onCycleMagnet?: () => void;
   stayInDrawingMode?: boolean;
   onToggleStayInDrawingMode?: () => void;
+  // ── Second timeframe overlay ──
+  secondTimeframe?: string | null;
+  showSecondTimeframe?: boolean;
+  onSecondTimeframeChange?: (tf: string | null) => void;
+  onToggleSecondTimeframe?: () => void;
 }
 
 export function ChartToolbar({
@@ -144,10 +149,15 @@ export function ChartToolbar({
   onCycleMagnet,
   stayInDrawingMode = false,
   onToggleStayInDrawingMode,
+  secondTimeframe = null,
+  showSecondTimeframe = false,
+  onSecondTimeframeChange,
+  onToggleSecondTimeframe,
 }: ChartToolbarProps) {
   const [showSymbolSearch, setShowSymbolSearch] = useState(false);
   const [symbolFilter, setSymbolFilter] = useState("");
   const [tfOpen, setTfOpen] = useState(false);
+  const [secondTfOpen, setSecondTfOpen] = useState(false);
 
   const filteredSymbols = symbols.filter(
     (s) =>
@@ -332,7 +342,90 @@ export function ChartToolbar({
         )}
       </div>
 
-      {/* Session replay controls — disabled until the feature is QA'd */}
+      ﻿// ── Second timeframe overlay selector + toggle ──
+      {onSecondTimeframeChange && (
+        <div className="flex items-center gap-0.5 shrink-0">
+          {/* Toggle visibility button */}
+          <button
+            onClick={() => onToggleSecondTimeframe?.()}
+            title={showSecondTimeframe ? "Hide overlay timeframe" : "Show overlay timeframe"}
+            className={cn(
+              "flex items-center gap-1 px-1.5 py-1 rounded text-xs",
+              showSecondTimeframe && secondTimeframe
+                ? "bg-primary/20 text-primary"
+                : "hover:bg-secondary text-muted-foreground",
+            )}
+          >
+            <Layers3 className="h-3.5 w-3.5" />
+          </button>
+
+          {/* Timeframe dropdown */}
+          <div className="relative" data-second-tf-dropdown>
+            <button
+              onClick={() => setSecondTfOpen((v) => !v)}
+              className={cn(
+                "flex items-center gap-1 px-1.5 py-1 rounded text-xs font-medium transition-all",
+                secondTimeframe
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+              )}
+            >
+              <span className={cn(
+                "rounded px-1 py-0.5 text-[10px] font-semibold",
+                secondTimeframe
+                  ? "bg-secondary text-foreground"
+                  : "bg-transparent text-muted-foreground/60",
+              )}>
+                {secondTimeframe ?? "--"}
+              </span>
+              <ChevronDown className={cn("h-3 w-3 transition-transform", secondTfOpen && "rotate-180")} />
+            </button>
+            {secondTfOpen && (
+              <div
+                className="absolute top-full left-0 mt-1 z-50 bg-card border border-border rounded-lg shadow-lg p-1 min-w-[120px]"
+                onMouseLeave={() => setSecondTfOpen(false)}
+              >
+                <div className="px-1 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                  Overlay TF
+                </div>
+                <button
+                  onClick={() => {
+                    onSecondTimeframeChange(null);
+                    setSecondTfOpen(false);
+                  }}
+                  className={cn(
+                    "w-full text-left px-2 py-1 rounded text-xs font-medium transition-colors",
+                    secondTimeframe === null
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-secondary text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Off
+                </button>
+                {TIMEFRAMES.filter((tf) => tf !== timeframe).map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => {
+                      onSecondTimeframeChange(tf);
+                      setSecondTfOpen(false);
+                    }}
+                    className={cn(
+                      "w-full text-left px-2 py-1 rounded text-xs font-medium transition-colors",
+                      tf === secondTimeframe
+                        ? "bg-primary text-primary-foreground"
+                        : "hover:bg-secondary text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Session replay controls, disabled until the feature is QA'd */}
       {REPLAY_ENABLED && replayAccountId != null && <ReplayHUD accountId={replayAccountId} />}
 
       {/* Chart layout templates (save/load/autosave) */}

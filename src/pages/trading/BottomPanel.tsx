@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { TrendingUp, Clock, History, Globe, Newspaper, Bot, ChevronDown, FlaskConical } from "lucide-react";
+import { TrendingUp, Clock, History, Globe, Newspaper, Bot, ChevronDown, FlaskConical, Bell } from "lucide-react";
 import { StrategyBacktestPanel } from "./StrategyBacktestPanel.tsx";
+import { AlertPanel } from "./alerts/AlertPanel.tsx";
 import type { JesseTrade } from "../../services/api/jesse";
 import { useAuthStore } from "../../services/store.tsx";
 import { useTradingStore } from "../../services/store.tsx";
@@ -40,9 +41,9 @@ function getErrorMessage(error: unknown): string {
 }
 
 export interface BottomPanelProps {
-  tab: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy";
+  tab: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy" | "alerts";
   onTabChange: (
-    t: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy",
+    t: "positions" | "orders" | "history" | "journal" | "calendar" | "news" | "ai-trader" | "strategy" | "alerts",
   ) => void;
   positions: Position[];
   orders: Order[];
@@ -210,6 +211,7 @@ export function BottomPanel({
     { key: "news", label: "News", icon: Newspaper },
     ...(aiTraderEnabled ? [{ key: "ai-trader" as const, label: "AI Trader", icon: Bot }] : []),
     { key: "strategy" as const, label: "Strategy", icon: FlaskConical },
+    { key: "alerts" as const, label: "Alerts", icon: Bell },
   ];
 
   return (
@@ -338,6 +340,9 @@ export function BottomPanel({
             onEquityCurveUpdate={onBacktestEquityCurve}
             onShowDrawdownOverlay={onShowDrawdownOverlay}
           />
+        )}
+        {tab === "alerts" && (
+          <AlertPanel symbol={selectedSymbol ?? ""} />
         )}
       </div>
       )}

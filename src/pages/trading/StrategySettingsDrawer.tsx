@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Settings, X, Sliders, Code } from "lucide-react";
 import { cn } from "../../lib/utils.ts";
 import { fetchStrategyHyperparameters, type Hyperparameter } from "../../lib/strategy-hyperparameters.ts";
+import { syncCandles } from "../../services/api/jesse.ts";
 
 interface StrategySettingsDrawerProps {
   open: boolean;
@@ -59,6 +60,8 @@ export function StrategySettingsDrawer({
   const [hyperparams, setHyperparams] = useState<Hyperparameter[]>([]);
   const [showHyperparams, setShowHyperparams] = useState(false);
   const [loadingHyperparams, setLoadingHyperparams] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (!strategyName || !open) return;
@@ -179,6 +182,24 @@ export function StrategySettingsDrawer({
               )}
             </div>
           )}
+
+          {/* Candle data sync */}
+          <div className="space-y-2">
+            <button
+              onClick={async () => {
+                setSyncing(true);
+                setSyncResult(null);
+                const result = await syncCandles(exchange, symbol, timeframe, dateRange.start, dateRange.end);
+                setSyncing(false);
+                setSyncResult(result.success ? `Synced ${result.count} candles` : `Failed: ${result.message}`);
+              }}
+              disabled={syncing}
+              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              <span>{syncing ? "Syncing..." : "Sync Candles"}</span>
+            </button>
+            {syncResult && <div className="text-[10px] text-muted-foreground">{syncResult}</div>}
+          </div>
 
           {/* Date range */}
           <div className="space-y-2">

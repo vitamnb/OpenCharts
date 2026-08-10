@@ -60,6 +60,15 @@ export interface ChartPreferences {
   challengeDailyLossLine: boolean;
   challengeMaxDrawdownLine: boolean;
   challengeProfitTargetLine: boolean;
+  // ── Multi-timeframe overlay ──
+  /** Second timeframe to overlay on the chart (null = disabled). */
+  secondTimeframe: string | null;
+  /** Whether the second timeframe overlay is visible. */
+  showSecondTimeframe: boolean;
+  /** Whether the volume profile histogram is visible. */
+  showVolumeProfile: boolean;
+  /** Whether the order book heatmap overlay is visible. */
+  showOrderBookHeatmap: boolean;
 }
 
 type TraderPrefs = Record<string, string>;
@@ -103,6 +112,10 @@ const DEFAULT_CHART_PREFS: ChartPreferences = {
   challengeDailyLossLine: false,
   challengeMaxDrawdownLine: false,
   challengeProfitTargetLine: false,
+  secondTimeframe: null,
+  showSecondTimeframe: false,
+  showVolumeProfile: false,
+  showOrderBookHeatmap: false,
 };
 
 /** Boolean preference keys read straight through `toBool` with their default. */
@@ -126,6 +139,9 @@ const BOOL_PREF_KEYS = [
   "challengeMaxDrawdownLine",
   "challengeProfitTargetLine",
   "chartTemplateAutosave",
+  "showSecondTimeframe",
+  "showVolumeProfile",
+  "showOrderBookHeatmap",
 ] as const;
 
 /** String preference keys stored raw (empty string allowed). */
@@ -145,6 +161,7 @@ const STRING_PREF_KEYS = [
   "colorSlLine",
   "activeChartTemplate",
   "priceScaleMode",
+  "secondTimeframe",
 ] as const;
 
 /**
@@ -229,10 +246,16 @@ export function getChartPreferencesFromStorage(): ChartPreferences {
     result[key] = toBool(prefs[key], DEFAULT_CHART_PREFS[key]);
   }
   for (const key of STRING_PREF_KEYS) {
-    // Skip priceScaleMode — handled separately with enum validation below
+    // Skip priceScaleMode, handled separately with enum validation below
     if (key === "priceScaleMode") continue;
+    // Skip secondTimeframe, handled separately for null coercion
+    if (key === "secondTimeframe") continue;
     (result as Record<string, unknown>)[key] = prefs[key] ?? DEFAULT_CHART_PREFS[key];
   }
+  // secondTimeframe: empty/undefined/"null" => null, valid TF string => string
+  const rawSecondTf = prefs.secondTimeframe;
+  result.secondTimeframe =
+    rawSecondTf && rawSecondTf !== "null" ? rawSecondTf : DEFAULT_CHART_PREFS.secondTimeframe;
   // Migrate the old boolean magnet flag to the tri-state when unset.
   result.magnetMode =
     toMagnetMode(prefs.magnetMode) ?? (toBool(prefs.drawingMagnet, false) ? "weak" : "none");
@@ -244,6 +267,11 @@ export function getChartPreferencesFromStorage(): ChartPreferences {
 export function updateChartPreferences(patch: Partial<ChartPreferences>): TraderPrefs {
   const next: TraderPrefs = { ...readTraderPrefs() };
   for (const [key, value] of Object.entries(patch)) {
+    // secondTimeframe: null is meaningful (means disabled), store as "null"
+    if (key === "secondTimeframe") {
+      next[key] = value == null ? "null" : String(value);
+      continue;
+    }
     if (value == null) continue;
     // Strings store raw; booleans/arrays serialise to "true"/"false"/JSON —
     // the exact formats toBool/toStringArray parse back.

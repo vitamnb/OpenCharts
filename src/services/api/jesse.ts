@@ -135,12 +135,12 @@ export async function fetchJesseCandles(
   // Jesse returns { id, data: [[time, open, close, high, low, volume], ...] }
   const raw: number[][] = data.data || [];
   return raw.map((c) => ({
-    time: c[0],
-    open: c[1],
-    close: c[2],
-    high: c[3],
-    low: c[4],
-    volume: c[5],
+    time: c[0] ?? 0,
+    open: c[1] ?? 0,
+    close: c[2] ?? 0,
+    high: c[3] ?? 0,
+    low: c[4] ?? 0,
+    volume: c[5] ?? 0,
   }));
 }
 
@@ -150,6 +150,45 @@ export async function checkJesseHealth(): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/** Sync candles from exchange into Jesse's PostgreSQL storage. */
+export async function syncCandles(
+  exchange: string,
+  symbol: string,
+  timeframe: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ success: boolean; count: number; message: string }> {
+  const id = crypto.randomUUID();
+  const dashedSymbol = symbol.includes("-")
+    ? symbol.replace(/-USD$/, "-USDT")
+    : symbol.replace(/^(\w+)(USDT|USD)$/, "$1-USDT");
+
+  try {
+    const res = await fetch(`${JESSE_BASE}/candles/sync`, {
+      method: "POST",
+      headers: jesseHeaders(),
+      body: JSON.stringify({
+        id,
+        exchange,
+        symbol: dashedSymbol,
+        timeframe,
+        start_date: startDate,
+        finish_date: endDate,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return { success: false, count: 0, message: err };
+    }
+
+    const data = await res.json();
+    return { success: true, count: data.count ?? 0, message: data.message ?? "Synced" };
+  } catch (err) {
+    return { success: false, count: 0, message: String(err) };
   }
 }
 

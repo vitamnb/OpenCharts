@@ -52,6 +52,7 @@ const RESET_BY_TAB: Partial<Record<TabId, Partial<ChartPreferences>>> = {
     showWatermark: true,
     showCountdown: true,
     showOhlcLegend: true,
+    showOrderBookHeatmap: false,
     priceScaleMode: "linear" as const,
     priceScaleLeft: false,
     priceScaleAutoScale: true,
@@ -254,6 +255,12 @@ function AppearanceTab({ prefs }: { prefs: ChartPreferences }) {
         onChange={(v) => set({ showVolume: v })}
       />
       <ToggleRow
+        label="Volume Profile"
+        hint="Horizontal histogram showing volume by price level (POC, VAH, VAL)"
+        checked={prefs.showVolumeProfile}
+        onChange={(v) => set({ showVolumeProfile: v })}
+      />
+      <ToggleRow
         label="Grid lines"
         checked={prefs.showGrid}
         onChange={(v) => set({ showGrid: v })}
@@ -273,6 +280,12 @@ function AppearanceTab({ prefs }: { prefs: ChartPreferences }) {
         label="OHLC legend"
         checked={prefs.showOhlcLegend}
         onChange={(v) => set({ showOhlcLegend: v })}
+      />
+      <ToggleRow
+        label="Order book heatmap"
+        hint="Depth-based colour overlay behind candles (bids green, asks red)"
+        checked={prefs.showOrderBookHeatmap}
+        onChange={(v) => set({ showOrderBookHeatmap: v })}
       />
     </div>
   );
