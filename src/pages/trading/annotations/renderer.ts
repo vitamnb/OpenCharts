@@ -128,7 +128,7 @@ export class AnnotationRenderer {
       lineWidth: ann.lineWidth as 1 | 2 | 3 | 4,
       lineStyle: ann.lineStyle as LineStyle,
       axisLabelVisible: true,
-      title: ann.title ?? "",
+      title: "",
     });
     item.priceLines.push(line);
   }

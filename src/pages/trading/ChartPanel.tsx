@@ -84,6 +84,8 @@ import { useDrawdownOverlay } from "./useDrawdownOverlay.ts";
 import { useAlertEngine } from "./alerts/useAlertEngine.ts";
 import { AddAlertDialog } from "./alerts/AddAlertDialog.tsx";
 import { useVolumeProfile } from "./useVolumeProfile.ts";
+import { useAgentBridge } from "./agent-bridge/useAgentBridge.ts";
+import { AgentAnnotationToggle } from "./agent-bridge/AgentAnnotationToggle.tsx";
 import { useOrderBook } from "./useOrderBook.ts";
 import { OrderBookHeatmap } from "./OrderBookHeatmap.tsx";
 import { PaneResizeOverlay } from "./PaneResizeOverlay.tsx";
@@ -2107,6 +2109,11 @@ export function ChartPanel({
     enabled: chartPrefs?.showVolumeProfile ?? false,
   });
 
+  // Agent bridge: receives annotations from OpenClaw agents
+  // Use colon format to match the annotation store chartKey function
+  const chartKey = `${selectedSymbol}:${timeframe}`;
+  const agentBridgeState = useAgentBridge({ enabled: true, chartKey });
+
   // Order book heatmap overlay
   const orderBookData = useOrderBook(selectedSymbol, chartPrefs.showOrderBookHeatmap);
 
@@ -2404,6 +2411,18 @@ export function ChartPanel({
         enabled={chartPrefs.showOrderBookHeatmap}
         isDark={isDark}
       />
+
+      {/* Agent bridge toggle */}
+      <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20 }}>
+        <AgentAnnotationToggle
+          connected={agentBridgeState.bridgeConnected}
+          visible={agentBridgeState.agentAnnotationsVisible}
+          onToggleVisible={() => agentBridgeState.setAgentAnnotationsVisible(!agentBridgeState.agentAnnotationsVisible)}
+          activeCategories={agentBridgeState.activeCategories}
+          onToggleCategory={agentBridgeState.toggleCategory}
+          onClear={agentBridgeState.clearAgentAnnotations}
+        />
+      </div>
 
       {/* Pane-resize handles: one between each pair of chart panes (indicator
           boundary). Sits on top of the chart at z-5, but below the legend

@@ -45,21 +45,25 @@ export function useAnnotations(
       rendererRef.current.updateRefs(chart, candleSeries);
     }
 
-    // Sync initial annotations for this chart key
+    // Sync initial annotations for this chart key, plus symbol-level (price-only) annotations
     const key = currentKeyRef.current;
     if (key) {
-      const annotations = useAnnotationStore.getState().list(key);
-      rendererRef.current.sync(annotations);
+      const symbolKey = symbol; // symbol-only key for cross-timeframe annotations
+      const tfAnnotations = useAnnotationStore.getState().list(key);
+      const symbolAnnotations = useAnnotationStore.getState().list(symbolKey);
+      console.log(`[annotations] Initial sync for key=${key}, symbolKey=${symbolKey}, tfCount=${tfAnnotations.length}, symbolCount=${symbolAnnotations.length}`);
+      rendererRef.current.sync([...tfAnnotations, ...symbolAnnotations]);
     }
 
     // Subscribe to store changes
     const unsubscribe = useAnnotationStore.subscribe((state, prevState) => {
       const key = currentKeyRef.current;
       if (!key) return;
+      const symbolKey = symbol;
       
-      // Check if annotations for this chart key changed
-      const current = state.annotations[key] ?? [];
-      const previous = prevState.annotations[key] ?? [];
+      // Check if annotations for this chart key or symbol key changed
+      const current = [...(state.annotations[key] ?? []), ...(state.annotations[symbolKey] ?? [])];
+      const previous = [...(prevState.annotations[key] ?? []), ...(prevState.annotations[symbolKey] ?? [])];
       
       // Quick length check first
       if (current.length !== previous.length) {
@@ -71,6 +75,7 @@ export function useAnnotations(
       const currentIds = current.map((a) => `${a.id}:${a.visible}`).join(",");
       const previousIds = previous.map((a) => `${a.id}:${a.visible}`).join(",");
       if (currentIds !== previousIds) {
+        console.log(`[annotations] Store change detected for key=${key}, symbolKey=${symbolKey}, count=${current.length}`);
         rendererRef.current?.sync(current);
       }
     });
