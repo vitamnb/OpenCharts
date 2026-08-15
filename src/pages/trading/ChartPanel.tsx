@@ -2008,6 +2008,13 @@ export function ChartPanel({
     const loadKey = `${selectedSymbol}:${timeframe}`;
     const isNewChart = lastLoadKeyRef.current !== loadKey;
 
+    // Save the visible time range before setData so we can restore it.
+    // setData preserves the logical range, but when the data length changes
+    // dramatically (e.g. firstPaint 500 -> deep 12000), the same logical
+    // position maps to a completely different time window, causing a snap.
+    const ts = chartRef.current?.timeScale();
+    const savedRange = !isNewChart && ts ? ts.getVisibleRange() : null;
+
     series.setData(chartData);
     volumeSeriesRef.current?.setData(volumeData);
     lastCandleRef.current = chartData[chartData.length - 1] ?? null;
@@ -2016,14 +2023,25 @@ export function ChartPanel({
     const buffered = latestLiveCandleRef.current;
     if (!isNewChart) {
       // Periodic refetch — preserve viewport, re-apply latest live data.
+      // Restore the visible time range after setData to prevent snap-back
+      // when the candle count changes (e.g. deep-load transition).
+      if (savedRange && ts) {
+        try {
+          ts.setVisibleRange(savedRange);
+        } catch {
+          // Range may be invalid if data doesn't cover it — ignore
+        }
+      }
       reapplyLive(buffered, ctx);
       // If a backtest scroll is pending, apply it after data is set
+      // then clear it so subsequent refetches don't re-snap the viewport.
       if (pendingScrollRef.current) {
         const scroll = pendingScrollRef.current;
         chartRef.current?.timeScale().setVisibleRange({
           from: scroll.from as Time,
           to: scroll.to as Time,
         });
+        pendingScrollRef.current = null;
       }
       return;
     }
@@ -2034,12 +2052,14 @@ export function ChartPanel({
     replayBufferedLive(buffered, chartData, ctx);
 
     // If a backtest scroll is pending, apply it after data is set
+    // then clear it so subsequent refetches don't re-snap the viewport.
     if (pendingScrollRef.current) {
       const scroll = pendingScrollRef.current;
       chartRef.current?.timeScale().setVisibleRange({
         from: scroll.from as Time,
         to: scroll.to as Time,
       });
+      pendingScrollRef.current = null;
     }
 
     return scheduleStaleRefetch(chartData, ctx);

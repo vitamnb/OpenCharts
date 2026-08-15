@@ -84,11 +84,11 @@ export async function fetchCandles(
 
 /**
  * Fetch N most recent candles for a symbol.
- * Uses startAt/endAt with a calculated window.
+ * Paginates automatically when limit exceeds KuCoin's 1500-per-request cap.
  *
  * @param symbol    OpenCharts symbol
  * @param timeframe OpenCharts timeframe
- * @param limit     Number of candles (max 1500)
+ * @param limit     Number of candles (paginated in batches of 1500)
  */
 export async function fetchRecentCandles(
   symbol: string,
@@ -96,15 +96,43 @@ export async function fetchRecentCandles(
   limit: number = 500,
 ): Promise<KucoinCandle[]> {
   const kcType = toKucoinTimeframe(timeframe);
-  // Calculate the time window. KuCoin returns max 1500 candles per request.
-  // We estimate the start time based on the timeframe interval.
   const intervalSeconds = timeframeToSeconds(kcType);
   const now = Math.floor(Date.now() / 1000);
-  const startAt = now - Math.min(limit, 1500) * intervalSeconds;
 
-  const candles = await fetchCandles(symbol, timeframe, startAt, now);
+  if (limit <= 1500) {
+    // Single request is enough
+    const startAt = now - limit * intervalSeconds;
+    const candles = await fetchCandles(symbol, timeframe, startAt, now);
+    return candles.slice(-limit);
+  }
+
+  // Paginated backfill: fetch in 1500-candle batches from oldest to newest
+  const batches = Math.ceil(limit / 1500);
+  const allCandles: KucoinCandle[] = [];
+  let batchEnd = now;
+
+  for (let i = 0; i < batches; i++) {
+    const batchStart = batchEnd - 1500 * intervalSeconds;
+    try {
+      const batch = await fetchCandles(symbol, timeframe, batchStart, batchEnd);
+      if (batch.length === 0) break; // No more history available
+      allCandles.unshift(...batch);
+      batchEnd = batchStart;
+    } catch {
+      break; // Stop on error, return what we have
+    }
+  }
+
+  // Deduplicate by timestamp (overlapping batches may produce duplicates)
+  const seen = new Set<number>();
+  const deduped = allCandles.filter((c) => {
+    if (seen.has(c.time)) return false;
+    seen.add(c.time);
+    return true;
+  });
+
   // Trim to requested limit (take the most recent)
-  return candles.slice(-Math.min(limit, 1500));
+  return deduped.slice(-limit);
 }
 
 /**
